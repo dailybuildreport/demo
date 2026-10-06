@@ -1,5 +1,5 @@
 /*
- * Цифровой штаб строительства — администрирование объектов через интерфейс.
+ * FLOW — Цифровой штаб строительства. Администрирование объектов через интерфейс.
  *
  *  «Добавить объект» (#new)            — мастер создания: сведения, участники, разделы, график,
  *                                         готовность, бюджет, документация, ресурсы, показатели, риски, фото;
@@ -28,15 +28,16 @@
   Object.assign(U.PERM_X, {
     'ev-new': 'data', 'ev-edit': 'data', 'ev-del': 'data', 'letter-save': 'data',
     'ord-new': 'data', 'ord-status': 'data', 'ord-done': 'data', 'ord-comment': 'data', 'ord-event': 'data',
-    'doc-upload': 'docs', 'doc-act': 'docs', 'ks-new': 'data', 'ks-act': 'data',
-    'fact-entry': 'data', 'task-edit': 'schedule', 'res-entry': 'data', 'metric-entry': 'data', 'photo-upload': 'data', 'photo-edit': 'data',
+    'doc-upload': 'docs', 'doc-act': 'docs', 'ks-new': 'ksgc', 'ks-act': null,
+    'rep-new': 'fact', 'rep-fix': 'fact', 'rem-new': 'quality', 'g-new': 'ksgc', 'sig-decide': 'decide',
+    'fact-entry': 'settings', 'task-edit': 'schedule', 'res-entry': 'data', 'metric-entry': 'data', 'photo-upload': 'data', 'photo-edit': 'data',
     'risk-new': 'data', 'risk-edit': 'data', 'ct-edit': 'budget', 'ct-supp': 'budget', 'ct-pay': 'budget', 'ct-act': 'budget',
     'rd-mode': 'settings', 'obj-archive': 'admin', 'obj-restore': 'admin', 'obj-delete': 'admin', 'obj-reset': 'settings',
     'cfg-export': 'admin', 'wiz-create': 'create', 'wiz-reset': 'create'
   });
   Object.assign(U.PERM_F, {
     event: 'data', order: 'data', 'ord-done': 'data', 'ord-comment': 'data', upload: 'docs', 'doc-transfer': 'docs', 'doc-note': 'docs',
-    'ks-new': 'data', 'ks-result': 'data', fact: 'data', 'res-entry': 'data', 'metric-entry': 'data', 'photo-upload': 'data',
+    'ks-new': 'ksgc', 'ks-result': null, fact: 'settings', rep: 'fact', 'rem-new': 'quality', 'g-new': 'ksgc', 'sig-decide': 'decide', control: 'settings', 'res-entry': 'data', 'metric-entry': 'data', 'photo-upload': 'data',
     main: 'settings', sections: 'settings', weights: 'settings', 'rd-manual': 'settings', budgetcfg: 'budget', photocats: 'settings', 'cfg-import': 'admin'
   });
 
@@ -51,7 +52,7 @@
       participants: [], people: [], sections: DSF.SECTION_DEFS.map(s => s.k), stages: [], tasks: [], readiness: { mode: 'weight' },
       finance: 'entered', budget: { reserve: 0, items: [] }, contracts: [], docSections: [], docCats: [], documents: [],
       resources: { weeks: [], plan: [], fact: [], itr: [], equipment: [], byContractor: [], kinds: [] }, metrics: [], metricLog: [],
-      risks: [], photos: [], photoCats: [], events: [], protocols: [], orders: [], letters: [], decisions: [] };
+      risks: [], photos: [], photoCats: [], events: [], protocols: [], orders: [], letters: [], decisions: [], reports: [], remarks: [], control: {} };
   }
   function wiz() { if (!UI.wiz) UI.wiz = lsGet(DRAFT) || { step: 'main', def: newDraft() }; return UI.wiz; }
   const saveDraft = () => lsSet(DRAFT, UI.wiz);
@@ -464,6 +465,64 @@
     canDel: (st, it) => REG.orgUsage(it.id).length ? 'Организация участвует в объектах' : null
   };
 
+
+  /* --- производственный контур: ежедневные отчёты, замечания, гарантийные письма (данные объекта) --- */
+  const REP_STATE = [['sub', 'Подан, не подтверждён'], ['step1', 'Подтверждён первой ступенью'], ['full', 'Подтверждён полностью'], ['ret', 'Возвращён подрядчику']];
+  const repTasks = (def, M, it) => (def.tasks || []).filter(t => !t.ms && !t.archived && ((it && (it.lines || []).some(l => (Array.isArray(l) ? l[0] : l.task) === t.id)) || !M || (M.byId.get(t.id) && !M.byId.get(t.id).done && (M.byId.get(t.id).as != null || M.byId.get(t.id).pct > 0))));
+  C.reports = {
+    title: 'Ежедневные отчёты подрядчиков', one: 'отчёт', perm: 'settings', idp: 'rep', del: true, wide: true,
+    list: def => (def.reports = def.reports || []),
+    sort: () => (a, b) => String(b.date).localeCompare(String(a.date)),
+    get: raw => { const chain = DSF.chainOf({ control: (UI.coll && defOf(UI.coll.t) || {}).control }); const ok = raw.ok || [];
+      return Object.assign({}, raw, { q: Object.fromEntries((raw.lines || []).map(l => Array.isArray(l) ? [l[0], l[1]] : [l.task, l.v])), state: raw.ret ? 'ret' : chain.every(x => ok.includes(x)) ? 'full' : ok.length ? 'step1' : 'sub', retNote: typeof raw.ret === 'string' ? raw.ret : '' }); },
+    put: o => { const chain = DSF.chainOf({ control: (UI.coll && defOf(UI.coll.t) || {}).control }); const x = Object.assign({}, o);
+      x.lines = Object.entries(o.q || {}).filter(([, v]) => +v > 0).map(([k, v]) => [k, +v]);
+      x.ok = o.state === 'full' ? chain.slice() : o.state === 'step1' ? chain.slice(0, 1) : [];
+      if (o.state === 'ret') x.ret = o.retNote || 'Возвращён'; else delete x.ret;
+      delete x.q; delete x.state; delete x.retNote; return x; },
+    defaults: () => ({ date: today(), state: 'sub' }),
+    schema: (def, it, M) => [
+      { k: 'date', t: 'Дата работ', type: 'date', req: true, maxToday: true, w: 'third' }, { k: 'org', t: 'Подрядчик', req: true, w: 'third', list: [...new Set((def.contracts || []).map(c => c.contractor).filter(Boolean))] },
+      { k: 'crew', t: 'Рабочих, чел.', type: 'number', min: 0, step: 1, w: 'third' },
+      { type: 'section', t: 'Выполненные объёмы за день', hint: 'в единицах работы, если задан общий объём, иначе — в процентных пунктах' },
+      ...repTasks(def, M, it).map(t => ({ k: 'q.' + t.id, t: t.name + ' (' + (t.qty ? (t.unit || 'ед.') : '%') + ')', type: 'number', min: 0, w: 'half' })),
+      { type: 'section', t: 'Подтверждение', hint: 'цепочка: ' + DSF.chainOf(def).map(x => DSF.FACT_STEPS[x]).join(' → ') },
+      { k: 'state', t: 'Состояние', type: 'select', req: true, opts: REP_STATE, w: 'half' }, { k: 'retNote', t: 'Причина возврата', w: 'half' },
+      { k: 'note', t: 'Комментарий подрядчика' }
+    ],
+    validate: v => Object.entries(v).some(([k, x]) => k.startsWith('q.') && +x > 0) ? null : 'Укажите объём хотя бы по одной работе',
+    cols: [['Дата', x => fd(dn(x.date))], ['Подрядчик', x => esc(x.org || '—')], ['Объёмы', (x, def) => esc((x.lines || []).map(l => { const id = Array.isArray(l) ? l[0] : l.task, v = Array.isArray(l) ? l[1] : l.v; const t = (def.tasks || []).find(z => z.id === id); return (t ? t.name : id) + ': ' + qn(v) + ' ' + (t && t.qty ? (t.unit || '') : '%'); }).join('; '))],
+      ['Состояние', (x, def) => { const chain = DSF.chainOf(def); const ok = x.ok || []; return x.ret ? chip('возвращён', 'warn') : chain.every(c => ok.includes(c)) ? chip('подтверждён', 'good') : chip(ok.length ? 'ждёт: ' + DSF.FACT_STEPS[chain.find(c => !ok.includes(c))] : 'подан', 'accent'); }]]
+  };
+  C.remarks = {
+    title: 'Замечания строительного контроля', one: 'замечание', perm: 'settings', idp: 'rm', del: true, wide: true,
+    list: def => (def.remarks = def.remarks || []),
+    sort: () => (a, b) => String(b.date).localeCompare(String(a.date)),
+    defaults: () => ({ date: today(), due: iso(T() + 7), status: 'new', sev: 'major' }),
+    schema: (def) => [
+      { k: 'no', t: 'Номер', w: 'third' }, { k: 'sev', t: 'Важность', type: 'select', req: true, opts: Object.entries(DSF.REMARK_SEV).map(([k, v]) => [k, v.t]), w: 'third' }, { k: 'status', t: 'Статус', type: 'select', req: true, opts: Object.entries(DSF.REMARK_STATUS).map(([k, v]) => [k, v.t]), w: 'third' },
+      { k: 'title', t: 'Замечание', req: true }, { k: 'desc', t: 'Описание', type: 'textarea', rows: 2 },
+      { k: 'task', t: 'Работа', type: 'select', req: true, opts: taskOpts(def, t => !t.ms), w: 'half' }, { k: 'loc', t: 'Место', w: 'half' },
+      { k: 'org', t: 'Исполнитель (подрядчик)', w: 'half', list: [...new Set((def.contracts || []).map(c => c.contractor).filter(Boolean))] }, { k: 'owner', t: 'Ответственный', w: 'half' },
+      { k: 'date', t: 'Выдано', type: 'date', req: true, maxToday: true, w: 'third' }, { k: 'due', t: 'Срок устранения', type: 'date', req: true, w: 'third' }, { k: 'closed', t: 'Закрыто', type: 'date', maxToday: true, w: 'third' },
+      { k: 'norm', t: 'Основание (проект, норматив)' }
+    ],
+    validate: v => v.status === 'closed' && !v.closed ? 'Для закрытого замечания укажите дату закрытия' : v.closed && v.closed < v.date ? 'Дата закрытия раньше даты выдачи' : null,
+    cols: [['№', x => esc(x.no || x.id)], ['Замечание', x => `<b>${esc(x.title)}</b>`], ['Работа', (x, def) => esc(((def.tasks || []).find(t => t.id === x.task) || {}).name || '—')], ['Важность', x => chip((DSF.REMARK_SEV[x.sev] || {}).t || '—', (DSF.REMARK_SEV[x.sev] || {}).c)], ['Статус', x => esc((DSF.REMARK_STATUS[x.status] || {}).t || '—')], ['Срок', x => fd(dn(x.due))]]
+  };
+  C.glet = {
+    title: 'Гарантийные письма по ИД', one: 'гарантийное письмо', perm: 'settings', idp: 'gl', del: true, wide: true,
+    list: def => (def.letters = def.letters || []), filter: x => x.kind === 'guarantee',
+    defaults: () => ({ kind: 'guarantee', dir: 'in', date: today(), status: 'Зарегистрировано' }),
+    schema: (def, it, M) => [
+      { k: 'no', t: 'Номер письма', req: true, w: 'third' }, { k: 'date', t: 'Дата', type: 'date', req: true, maxToday: true, w: 'third' }, { k: 'dueDate', t: 'Срок передачи ИД', type: 'date', req: true, w: 'third' },
+      { k: 'from', t: 'Подрядчик', req: true, w: 'half', list: [...new Set((def.contracts || []).map(c => c.contractor).filter(Boolean))] }, { k: 'ks', t: 'КС-2', type: 'select', opts: M ? M.ks.filter(k => (DSF.KS_STATUS[k.status] || {}).r < 9).map(k => [k.id, k.contract.no + ' · ' + k.no]) : [], w: 'half' },
+      { k: 'tasks', t: 'Работы без ИД', type: 'multi', opts: taskOpts(def, t => !t.ms) }, { k: 'subject', t: 'Тема' }
+    ],
+    before: (def, it) => { it.kind = 'guarantee'; it.dir = it.dir || 'in'; it.to = it.to || def.customer || ''; it.status = it.status || 'Зарегистрировано'; if (!it.subject) it.subject = 'Гарантийное письмо о передаче исполнительной документации'; },
+    cols: [['Письмо', x => `<b>${esc(x.no)}</b> от ${fd(dn(x.date))}`], ['Подрядчик', x => esc(x.from || '—')], ['Срок ИД', x => fd(dn(x.dueDate))], ['КС-2', (x, def, M) => { const k = M && x.ks ? M.ksBy.get(x.ks) : null; return k ? esc(k.contract.no + ' · ' + k.no) : '—'; }]]
+  };
+
   /* --- идентификация элементов коллекции --- */
   function itemsOf(key, def, parent) { const K = C[key]; const list = K.list(def, parent, false) || []; return list; }
   function findItem(key, list, id) {
@@ -576,7 +635,7 @@
   const TABS = [
     ['main', 'Основное', 'building', 'settings'], ['parts', 'Участники', 'users', 'settings'], ['sections', 'Разделы', 'grid', 'settings'],
     ['schedule', 'График и вехи', 'gantt', 'schedule'], ['readiness', 'Готовность', 'target', 'settings'], ['budget', 'Бюджет и договоры', 'coins', 'budget'],
-    ['docs', 'Документация', 'folder', 'settings'], ['resources', 'Ресурсы', 'users', 'settings'], ['metrics', 'Показатели', 'chart', 'settings'],
+    ['docs', 'Документация', 'folder', 'settings'], ['control', 'Контроль и отчётность', 'shield', 'settings'], ['resources', 'Ресурсы', 'users', 'settings'], ['metrics', 'Показатели', 'chart', 'settings'],
     ['risks', 'Риски', 'alert', 'data'], ['photos', 'Фото', 'cam', 'data']
   ];
   const STATUS_OPTS = Object.entries(DSF.PROJECT_STATUS).map(([k, v]) => [k, v.t]);
@@ -629,7 +688,8 @@
   }
   FM.sections = function (f) {
     const t = tgt(), list = ['overview'].concat([...f.querySelectorAll('input[name="sec"]:checked')].map(x => x.value));
-    if (!mutate(t, def => { def.sections = [...new Set(list)]; }, 'Разделы объекта: ' + list.length)) return;
+    const off = DSF.SECTION_DEFS.map(x => x.k).filter(k => !list.includes(k) && !DSF.SECTION_DEFS.find(x => x.k === k).fixed);
+    if (!mutate(t, def => { def.sections = [...new Set(list)]; def.sectionsOff = off; }, 'Разделы объекта: ' + list.length)) return;
     if (t === 'wizard') return wizStep(1);
     keepPage(); toast('Разделы сохранены.');
   };
@@ -736,7 +796,39 @@
     const list = String(new FormData(f).get('cats') || '').split('\n').map(x => x.trim()).filter(Boolean);
     if (mutate(tgt(), def => { def.photoCats = list; }, 'Категории фото')) { keepPage(); toast('Сохранено.'); }
   };
-  const TAB_RENDER = { main: tabMain, parts: tabParts, sections: tabSections, schedule: tabSchedule, readiness: tabReadiness, budget: tabBudget, docs: tabDocs, resources: tabResources, metrics: tabMetrics, risks: tabRisks, photos: tabPhotos };
+
+  /* --- контроль и отчётность: цепочка подтверждения факта, ИД, пороги сигналов --- */
+  const CHAINS = [['tz,director', 'Технический заказчик → Директор'], ['director,tz', 'Директор → Технический заказчик'], ['tz', 'Только Технический заказчик'], ['director', 'Только Директор']];
+  const CONTROL_SCHEMA = () => [
+    { type: 'section', t: 'Ежедневный факт', hint: 'кто и в каком порядке подтверждает отчёт подрядчика; в график и КС-2 идёт только полностью подтверждённый факт' },
+    { k: 'chain', t: 'Цепочка подтверждения', type: 'select', req: true, opts: CHAINS },
+    { k: 'confirmDays', t: 'Сигнал, если отчёт ждёт подтверждения, дней', type: 'number', min: 1, step: 1, w: 'half' }, { k: 'paceMin', t: 'Сигнал, если темп ниже требуемого, %', type: 'number', min: 10, max: 100, step: 1, w: 'half' },
+    { type: 'section', t: 'Исполнительная документация и КС-2' },
+    { k: 'idRequired', t: 'КС-2 предъявляется только с принятой ИД (иначе — гарантийное письмо)', type: 'check' },
+    { k: 'guaranteeDays', t: 'Срок гарантийного письма по умолчанию, дней', type: 'number', min: 1, step: 1, w: 'half' }, { k: 'ksDays', t: 'Сигнал, если КС-2 стоит на шаге, дней', type: 'number', min: 1, step: 1, w: 'half' },
+    { type: 'section', t: 'Сроки' },
+    { k: 'slipDays', t: 'Сигнал по сдвигу работы критического пути, дней', type: 'number', min: 1, step: 1, w: 'half' }, { k: 'rdDays', t: 'Контроль передачи РД до начала работ, дней', type: 'number', min: 1, step: 1, w: 'half' }
+  ];
+  function tabControl(t, def, M) {
+    const c = Object.assign({}, DSF.CONTROL_DEFAULTS, def.control || {});
+    const val = Object.assign({}, c, { chain: (c.factChain || ['tz', 'director']).join(',') });
+    return `<section class="panel"><header><h2>Контроль и отчётность</h2><span class="sub">правила объекта — без изменения кода</span></header>
+      <div class="pad"><form data-form="control" class="mform plain">${fieldsHtml(CONTROL_SCHEMA(), val)}<div class="err" hidden></div>
+        <div class="mf"><button class="btn primary" type="submit">${ico('check')}${t === 'wizard' ? 'Сохранить и далее' : 'Сохранить правила'}</button></div></form></div></section>
+      ${t === 'wizard' ? '' : collTable('reports', t, def, { M, note: 'Данные демо-объекта вымышлены и могут быть скорректированы здесь. Новые отчёты подрядчики подают в разделе «Производство».', emptyText: 'Отчётов нет.' })}
+      ${t === 'wizard' ? '' : collTable('remarks', t, def, { emptyText: 'Замечаний нет.' })}
+      ${t === 'wizard' ? '' : collTable('glet', t, def, { M, emptyText: 'Гарантийных писем нет.' })}`;
+  }
+  FM.control = function (f) {
+    const t = tgt(), { v, errs } = readFields(CONTROL_SCHEMA(), f);
+    if (errs.length) return showErr(f, errs.map(esc).join('<br>'));
+    const fn = def => { def.control = Object.assign({}, def.control || {}, { factChain: String(v.chain).split(','), idRequired: !!v.idRequired });
+      ['confirmDays', 'paceMin', 'guaranteeDays', 'ksDays', 'slipDays', 'rdDays'].forEach(k => { if (v[k] != null) def.control[k] = v[k]; else delete def.control[k]; }); };
+    if (!commit(t, fn, 'Правила контроля и отчётности', f.querySelector('.err'))) return;
+    if (t === 'wizard') return wizStep(1);
+    keepPage(); toast('Правила сохранены: цепочка подтверждения и сигналы пересчитаны.');
+  };
+  const TAB_RENDER = { control: tabControl, main: tabMain, parts: tabParts, sections: tabSections, schedule: tabSchedule, readiness: tabReadiness, budget: tabBudget, docs: tabDocs, resources: tabResources, metrics: tabMetrics, risks: tabRisks, photos: tabPhotos };
 
   /* ====================================================================
    * НАСТРОЙКИ ОБЪЕКТА  (#<id>.settings.<вкладка>)
@@ -854,10 +946,11 @@
     if (!x) return `<div class="mh"><h3>Нет работ</h3><button class="icon-btn" type="button" data-act="x-close">${ico('x')}</button></div>`;
     UI.factTask = x.id;
     const t = M.byId.get(x.id);
-    return `<form data-form="fact" class="mform"><div class="mh"><div><div class="eyebrow">Внесение факта · ${F.date(T())}</div><h3 style="margin-top:4px">${esc(x.name)}</h3></div><button class="icon-btn" type="button" data-act="x-close" aria-label="Закрыть">${ico('x')}</button></div>
+    return `<form data-form="fact" class="mform"><div class="mh"><div><div class="eyebrow">Корректировка факта (администрирование) · ${F.date(T())}</div><h3 style="margin-top:4px">${esc(x.name)}</h3></div><button class="icon-btn" type="button" data-act="x-close" aria-label="Закрыть">${ico('x')}</button></div>
       <div class="mb">
         <div class="fld"><label for="fa-task">Работа</label><select id="fa-task" name="task">${works.map(z => `<option value="${esc(z.id)}" ${z.id === x.id ? 'selected' : ''}>${esc((z.stage ? z.stage + ' · ' : '') + z.name)}</option>`).join('')}</select></div>
         <div class="note">План: ${fd(dn(x.ps))} – ${fd(dn(x.pf))}${t ? ' · сейчас ' + num(t.pct, 1) + '% при плане на дату ' + pct(t.planNow) : ''}${x.qty ? ' · общий объём ' + num(x.qty, 1) + ' ' + esc(x.unit || '') : ''}</div>
+        ${t && t.hist && t.hist.length ? `<div class="note warn">По работе ведётся ежедневный факт: здесь задаётся значение <b>на начало журнала</b> (${fd(t.histStart)}); подтверждённые отчёты (${t.qty ? num(t.qtyFact - (x.qtyFact || 0), 1) + ' ' + esc(t.unit || '') : '+' + num(t.pct - (x.pct || 0), 1) + ' п.п.'}) прибавляются к нему. Текущий факт меняется через отчёты подрядчика в разделе «Производство».</div>` : ''}
         <div class="row-f3">${x.qty ? `<div class="fld"><label for="fa-q">Фактический объём, ${esc(x.unit || '')}</label><input id="fa-q" name="qtyFact" type="number" min="0" step="any" value="${x.qtyFact != null ? x.qtyFact : ''}"></div>` : `<div class="fld"><label for="fa-p">% выполнения</label><input id="fa-p" name="pct" type="number" min="0" max="100" step="0.1" value="${x.pct != null ? x.pct : ''}"></div>`}
           <div class="fld"><label for="fa-as">Фактическое начало</label><input id="fa-as" name="as" type="date" max="${today()}" value="${esc(x.as || '')}"></div>
           <div class="fld"><label for="fa-af">Фактическое окончание</label><input id="fa-af" name="af" type="date" max="${today()}" value="${esc(x.af || '')}"></div></div>

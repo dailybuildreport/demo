@@ -23,6 +23,8 @@
   DSF.SECTION_DEFS = [
     { k: 'overview',  t: 'Обзор', ic: 'grid', s: 'Обзор', fixed: true, d: 'Сводка объекта: готовность, срок, бюджет, ресурсы, требует внимания, фото' },
     { k: 'schedule',  t: 'Реализация / График работ', ic: 'gantt', s: 'График', d: 'Этапы, работы, объёмы, Гант, план/факт/прогноз, критический путь, вехи' },
+    { k: 'production', t: 'Производство', ic: 'check', s: 'Производство', d: 'Ежедневный факт подрядчика, подтверждение техзаказчиком и директором, темп и прогноз по темпу' },
+    { k: 'quality',   t: 'Качество / стройконтроль', ic: 'shield', s: 'Качество', d: 'Замечания строительного контроля: выдача, устранение, проверка, аналитика по подрядчикам' },
     { k: 'resources', t: 'Ресурсы', ic: 'users', s: 'Ресурсы', d: 'Движение рабочей силы, ИТР, подрядчики, техника и оборудование' },
     { k: 'metrics',   t: 'Производственные показатели', ic: 'chart', s: 'Показатели', d: 'Периодическая отчётность: показатели объекта, план и факт по датам, комментарии, вложения' },
     { k: 'calendar',  t: 'Календарь', ic: 'cal', s: 'Календарь', d: 'События, совещания, приёмки, вехи и сроки поручений' },
@@ -30,13 +32,31 @@
     { k: 'docs',      t: 'Документы', ic: 'folder', s: 'Документы', d: 'РД, ПД, ИД, КС, отчёты, письма, протоколы, разрешения, договоры' },
     { k: 'orders',    t: 'Протокольные поручения', ic: 'list', s: 'Поручения', d: 'Протоколы совещаний, поручения, сроки, исполнение' },
     { k: 'risks',     t: 'Риски', ic: 'alert', s: 'Риски', d: 'Риски и проблемные вопросы, мероприятия, влияние на срок и стоимость' },
-    { k: 'photos',    t: 'Фотохроника', ic: 'cam', s: 'Фото', d: 'Фотографии по датам, этапам, работам и категориям' }
+    { k: 'photos',    t: 'Фотохроника', ic: 'cam', s: 'Фото', d: 'Фотографии по датам, этапам, работам и категориям' },
+    { k: 'timeline',  t: 'Хронология', ic: 'clock', s: 'Хронология', d: 'История жизни проекта: факт, документы, замечания, КС-2, поручения, решения — автоматически' }
   ];
+  /* разделы, появившиеся позже: у объектов с явным списком разделов включаются, пока администратор их не отключит */
+  const NEW_SECTIONS = ['production', 'quality', 'timeline'];
   DSF.sectionsOf = function (P) {
     const all = DSF.SECTION_DEFS.map(s => s.k);
-    const on = Array.isArray(P.sections) ? P.sections : all.filter(k => k !== 'metrics' || (P.metrics || []).length);
+    let on = Array.isArray(P.sections) ? P.sections.slice() : all.filter(k => k !== 'metrics' || (P.metrics || []).length);
+    if (Array.isArray(P.sections)) NEW_SECTIONS.forEach(k => { if (!on.includes(k) && !(P.sectionsOff || []).includes(k)) on.push(k); });
     return all.filter(k => k === 'overview' || on.includes(k));
   };
+
+  /* ---------- контроль и отчётность объекта (настраивается администратором) ---------- */
+  DSF.FACT_STEPS = { tz: 'Технический заказчик', director: 'Директор' };
+  DSF.CONTROL_DEFAULTS = {
+    factChain: ['tz', 'director'],   // кто и в каком порядке подтверждает ежедневный факт подрядчика
+    idRequired: true,                // принятая ИД — условие закрытия работ в КС-2 (без неё — предупреждение)
+    guaranteeDays: 14,               // срок гарантийного письма по ИД по умолчанию
+    slipDays: 7,                     // сигнал: сдвиг работы критического пути, дней
+    paceMin: 80,                     // сигнал: темп ниже требуемого, %
+    confirmDays: 2,                  // сигнал: отчёт ждёт подтверждения дольше, дней
+    ksDays: 5,                       // сигнал: КС-2 ждёт действия дольше, дней
+    rdDays: 14                       // сигнал: РД должна быть в производстве за N дней до начала работы
+  };
+  DSF.controlOf = P => Object.assign({}, DSF.CONTROL_DEFAULTS, (P && P.control) || {});
 
   /* ---------- участники ---------- */
   DSF.PARTY_ROLES = {
@@ -58,24 +78,33 @@
 
   /* ---------- роли и права ---------- */
   DSF.PERMS = {
-    view: 'Просмотр', data: 'Внесение данных', docs: 'Загрузка и движение документов', schedule: 'Изменение графика',
-    budget: 'Изменение бюджета', settings: 'Изменение настроек объекта', create: 'Создание объектов', admin: 'Администрирование'
+    view: 'Просмотр', fact: 'Ежедневный факт: подача отчёта', confirm: 'Подтверждение факта (своя ступень)',
+    data: 'События, поручения, риски, фото', decide: 'Решения руководителя по сигналам',
+    docs: 'Загрузка документов', docapprove: 'Проверка, согласование и передача документов',
+    ksgc: 'КС-2: действия подрядчика', kstz: 'КС-2: проверка и приёмка', quality: 'Замечания: выдача и проверка', fix: 'Замечания: устранение',
+    schedule: 'Изменение графика', budget: 'Изменение бюджета и оплат', settings: 'Настройки объекта', create: 'Создание объектов', admin: 'Администрирование'
   };
   DSF.ROLES = {
-    admin:    { t: 'Администратор системы', perms: ['view', 'data', 'docs', 'schedule', 'budget', 'settings', 'create', 'admin'] },
-    manager:  { t: 'Руководитель проекта', perms: ['view', 'data', 'docs', 'schedule', 'budget', 'settings'] },
-    engineer: { t: 'Инженер (внесение данных)', perms: ['view', 'data', 'docs'] },
-    viewer:   { t: 'Наблюдатель', perms: ['view'] }
+    admin:      { t: 'Администратор системы', short: 'Администратор', perms: Object.keys(DSF.PERMS) },
+    director:   { t: 'Директор проекта', short: 'Директор', perms: ['view', 'confirm', 'data', 'decide', 'docs', 'schedule', 'budget', 'settings'] },
+    tz:         { t: 'Технический заказчик', short: 'ТЗ', perms: ['view', 'confirm', 'data', 'docs', 'docapprove', 'kstz', 'quality'] },
+    contractor: { t: 'Подрядчик', short: 'Подрядчик', perms: ['view', 'fact', 'docs', 'ksgc', 'fix'] },
+    viewer:     { t: 'Наблюдатель / инвестор', short: 'Наблюдатель', perms: ['view'] }
   };
+  const ROLE_ALIAS = { manager: 'director', engineer: 'tz' };   // роли прежних версий демо
   const ls = {
     get(k) { try { return root.localStorage ? root.localStorage.getItem(k) : null; } catch (e) { return null; } },
     set(k, v) { try { if (!root.localStorage) return false; root.localStorage.setItem(k, v); return true; } catch (e) { return false; } },
     del(k) { try { root.localStorage && root.localStorage.removeItem(k); } catch (e) { /* нет доступа */ } }
   };
+  const savedRole = ls.get('dsf-role');
   DSF.auth = {
-    role: ls.get('dsf-role') || 'admin',
+    role: DSF.ROLES[savedRole] ? savedRole : (ROLE_ALIAS[savedRole] || 'admin'),
     setRole(r) { if (DSF.ROLES[r]) { this.role = r; ls.set('dsf-role', r); } },
-    can(p) { const r = DSF.ROLES[this.role] || DSF.ROLES.viewer; return r.perms.includes(p); }
+    can(p) { const r = DSF.ROLES[this.role] || DSF.ROLES.viewer; return r.perms.includes(p); },
+    /* ступень подтверждения факта: роль совпадает со ступенью (администратор может за любую) */
+    canStep(step) { return this.role === 'admin' || (this.role === step && this.can('confirm')); },
+    name() { return (DSF.ROLES[this.role] || {}).t || ''; }
   };
   DSF.can = p => DSF.auth.can(p);
 
@@ -95,7 +124,7 @@
     P.params = Object.assign({ extra: [] }, P.params || {});
     P.dates = Object.assign({}, P.dates || {});
     P.budget = Object.assign({ reserve: 0, items: [] }, P.budget || {});
-    ['tasks', 'contracts', 'risks', 'photos', 'events', 'documents', 'letters', 'protocols', 'orders', 'decisions'].forEach(k => { if (!Array.isArray(P[k])) P[k] = []; });
+    ['tasks', 'contracts', 'risks', 'photos', 'events', 'documents', 'letters', 'protocols', 'orders', 'decisions', 'reports', 'remarks'].forEach(k => { if (!Array.isArray(P[k])) P[k] = []; });
     P.resources = Object.assign({ weeks: [], plan: [], fact: [], itr: [], equipment: [], byContractor: [], kinds: [] }, P.resources || {});
     if (Array.isArray(P.participants)) {
       // реквизиты для совместимости с экранами: первая организация в каждой роли

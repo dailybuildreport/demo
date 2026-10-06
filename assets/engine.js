@@ -15,7 +15,19 @@
   const DSF = root.DSF = root.DSF || {};
   DSF.projects = DSF.projects || [];
   DSF.config = Object.assign({ today: '2026-10-05' }, DSF.config || {});
-  DSF.register = function (p) { DSF.projects.push(p); };
+  /* дополнения к датасету (вымышленные ежедневные отчёты, замечания и т. п.) — отдельными файлами data/flow/<id>.js */
+  DSF.augments = DSF.augments || {};
+  function applyAugment(p, a) {
+    if (!a || p.__aug) return; p.__aug = true;
+    Object.keys(a).forEach(k => {
+      if (k === 'taskPatch') { Object.entries(a.taskPatch).forEach(([id, patch]) => { const t = (p.tasks || []).find(x => x.id === id); if (t) Object.assign(t, patch); }); return; }
+      if (Array.isArray(a[k])) p[k] = (p[k] || []).concat(a[k]);
+      else if (a[k] && typeof a[k] === 'object' && p[k] && typeof p[k] === 'object' && !Array.isArray(p[k])) p[k] = Object.assign({}, p[k], a[k]);
+      else p[k] = a[k];
+    });
+  }
+  DSF.register = function (p) { applyAugment(p, DSF.augments[p.id]); DSF.projects.push(p); };
+  DSF.augment = function (id, a) { DSF.augments[id] = a; const p = DSF.projects.find(x => x.id === id); if (p) applyAugment(p, a); };
   DSF.extensions = DSF.extensions || [];
   DSF.invalidate = function (pid) { DSF.projects.forEach(p => { if (!pid || p.id === pid) delete p.__model; }); };
 
@@ -112,6 +124,7 @@
         es = t.as;
         const rem = Math.ceil(t.dur * (1 - t.pct / 100));
         ef = Math.max(T + rem - 1, T) + ex;
+        if (t.efPace != null) ef = Math.max(ef, t.efPace);   // прогноз работы — не раньше, чем позволяет текущий темп
         deps.forEach(({ d, r }) => { if (d.type === 'FF') ef = Math.max(ef, r.ef + d.lag); });
       } else {
         es = Math.max(t.s0, T);
@@ -166,10 +179,13 @@
     const DATES = P.dates || {};
     const RD = Object.assign({ mode: 'cost' }, P.readiness || {});
     const entered = P.finance === 'entered';   // финансы только из введённых данных, без модели актов
-    ['events', 'eventOps', 'docs', 'docOps', 'orders', 'orderOps', 'ks', 'ksOps', 'letters'].forEach(k => { if (!Array.isArray(S[k])) S[k] = []; });
+    (DSF.store && DSF.store.KINDS || ['events', 'eventOps', 'docs', 'docOps', 'orders', 'orderOps', 'ks', 'ksOps', 'letters', 'reports', 'reportOps', 'remarks', 'remarkOps', 'decisions', 'notes']).forEach(k => { if (!Array.isArray(S[k])) S[k] = []; });
     const items = (BUDGET.items || []).map(it => Object.assign({ inReadiness: true }, it));
     const itemBy = new Map(items.map(i => [i.code, i]));
 
+    /* журнал ежедневного факта: в расчёт идут только строки отчётов, прошедшие всю цепочку подтверждения */
+    const J = DSF.factJournal ? DSF.factJournal(P, S, T) : null;
+    const PACE_WIN = 14;
     const tasks = (P.tasks || []).filter(x => !x.archived).map((x, i) => {
       const t = Object.assign({}, x);
       t.idx = i;
@@ -181,10 +197,31 @@
       t.qty = +x.qty > 0 ? +x.qty : null;
       t.qtyFact = x.qtyFact != null && x.qtyFact !== '' ? +x.qtyFact : null;
       t.qtyPlan = x.qtyPlan != null && x.qtyPlan !== '' ? +x.qtyPlan : null;
+      const toPct = v => t.qty ? v / t.qty * 100 : v;
+      // факт на начало журнала (внесён при подключении объекта или администратором)
+      t.basePct = x.ms ? 0 : Math.min(100, t.qty ? (t.qtyFact || 0) / t.qty * 100 : (+x.pct || 0));
+      const hist = (!x.ms && J && J.byTask.get(x.id)) || [];
+      t.hist = hist; t.pend = (J && J.pend.get(x.id)) || null;
+      if (hist.length) {
+        if (t.qty) t.qtyFact = (t.qtyFact || 0) + sum(hist, e => e.v);
+        let cum = t.basePct;
+        t.histCum = hist.map(e => { cum = Math.min(100, cum + toPct(e.v)); return [e.d, cum]; });
+        t.histStart = hist[0].d;
+        if (t.as == null) t.as = t.histStart;
+      }
       const volPct = t.qty && t.qtyFact != null ? Math.min(100, Math.round(t.qtyFact / t.qty * 1000) / 10) : null;
-      t.pct = x.ms ? (x.af ? 100 : 0) : (volPct != null ? volPct : (+x.pct || 0));
+      t.pct = x.ms ? (x.af ? 100 : 0) : (volPct != null ? volPct : Math.min(100, Math.round(((+x.pct || 0) + sum(hist, e => e.v)) * 10) / 10));
+      if (!x.ms && t.af == null && t.pct >= 100 && t.histCum) { const h = t.histCum.find(e => e[1] >= 99.95); t.af = h ? h[0] : t.histCum[t.histCum.length - 1][0]; }
       t.planOverride = !x.ms && t.qty && t.qtyPlan != null ? clamp(t.qtyPlan / t.qty * 100, 0, 100) : null;
       t.done = t.pct >= 100;
+      // темп за 14 дней по подтверждённым отчётам и прогноз окончания при текущем темпе
+      if (!x.ms && !t.done && hist.length) {
+        const win = hist.filter(e => e.d > T - PACE_WIN && e.d <= T);
+        const prog = sum(win, e => toPct(e.v)), days = new Set(win.map(e => e.d)).size;
+        const left = 100 - t.pct, rate = prog / PACE_WIN, need = t.f0 >= T ? left / (t.f0 - T + 1) : null;   // плановый срок прошёл — требуемый темп не определён
+        t.pace = { rate, days, need, ratio: need > 0 ? rate / need : null, unitRate: t.qty ? rate * t.qty / 100 : null };
+        if (days >= 6 && t.pct >= 10 && rate > 0) t.efPace = T + Math.ceil(left / rate);
+      }
       t.dur = t.ms ? 0 : t.f0 - t.s0 + 1;
       t.cost = t.ms ? 0 : (x.cost || 0);
       t.deps = (x.deps || []).map(parseDep);
@@ -577,7 +614,7 @@
     const participants = DSF.participantsOf ? DSF.participantsOf(P, contracts) : [];
 
     /* расширения движка: документооборот, протоколы и поручения, письма */
-    const ctx = { P, S, T, start, tasks, byId, stages, contracts, items, risks, events, photos, root, allKs };
+    const ctx = { P, S, T, start, tasks, byId, stages, contracts, items, risks, events, photos, root, allKs, journal: J, control: DSF.controlOf ? DSF.controlOf(P) : {} };
     DSF.extensions.forEach(f => f(ctx));
     events.sort((a, b) => a.date - b.date || String(a.time).localeCompare(String(b.time)) || a.title.localeCompare(b.title));
     const evBy = new Map(events.map(e => [e.id, e]));
@@ -627,7 +664,10 @@
       phase, status, attention, finalTask: fin, ks: allKs, ksBy: new Map(allKs.map(k => [k.id, k])), store: S,
       participants, sections: DSF.sectionsOf ? DSF.sectionsOf(P) : null, readiness: RD
     };
-    ['documents', 'docBy', 'orders', 'orderBy', 'protocols', 'protocolBy', 'letters', 'letterBy', 'reports', 'docCats', 'docSecNames', 'docSections'].forEach(k => { M[k] = ctx[k]; });
+    ['documents', 'docBy', 'orders', 'orderBy', 'protocols', 'protocolBy', 'letters', 'letterBy', 'reports', 'docCats', 'docSecNames', 'docSections',
+      'journal', 'control', 'dayReports', 'remarks', 'remarkBy', 'guarantees', 'idStats'].forEach(k => { M[k] = ctx[k]; });
+    // послесборочные расширения: сигналы руководителю, хронология
+    (DSF.post || []).forEach(f => f(M, ctx));
     M.issues = DSF.validate(P, M);
     P.__model = M;
     return M;
@@ -643,6 +683,12 @@
       if (t.as == null || x < t.as) return 0;
       const end = t.af != null ? t.af : T;
       if (x >= end) return t.pct;
+      if (t.histCum) {
+        // до начала журнала — равномерно до факта на начало журнала, далее — подтверждённые отчёты по датам
+        if (x < t.histStart) return t.histStart > t.as ? t.basePct * (x - t.as + 1) / (t.histStart - t.as + 1) : t.basePct;
+        let v = t.basePct; for (const e of t.histCum) { if (e[0] <= x) v = e[1]; else break; }
+        return v;
+      }
       return t.pct * (x - t.as + 1) / (end - t.as + 1);
     }
     function forecastPct(t, x) {

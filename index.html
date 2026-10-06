@@ -1,14 +1,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Цифровой штаб строительства</title>
-<meta name="description" content="Демо-версия DSFlow: пять вымышленных строительных проектов на единой архитектуре.">
+<title>FLOW — Цифровой штаб строительства</title>
+<meta name="description" content="FLOW — Цифровой штаб строительства. Демо-версия: пять вымышленных объектов в разной стадии строительства на единой архитектуре.">
 <meta name="theme-color" content="#0A0F1A">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@1,500;1,600&display=swap">
 <style>
 /* Макет: тёмный сайдбар + рабочая область с панелями; на планшете — рейка, на телефоне — нижняя панель.
-   Токены — визуальный язык DSFlow: тёмная тема основная, светлая — по системе или переключателю. */
+   Токены — визуальный язык FLOW: тёмная тема основная, светлая — по системе или переключателю. */
 :root{
   color-scheme:dark;
   --plane:#0A0F1A; --surface:#111927; --surface-2:#182233; --surface-3:#1F2A3C; --hover:#152032;
@@ -691,6 +691,47 @@ img.thumb{width:72px; height:48px; object-fit:cover; border-radius:8px; display:
 .btn[hidden],.inline-imp [hidden]{display:none !important}
 .mf .hint{font-size:12px; color:var(--ink-3); line-height:1.4}
 @media (max-width:600px){ .kv.kvw{grid-template-columns:1fr; gap:2px 0} .kv.kvw dd{margin-bottom:8px} }
+
+/* ---------- FLOW: производственный и контрольный контур ---------- */
+.sb-name{font-size:18px; letter-spacing:.06em}
+.sb-sub{white-space:normal; line-height:1.35; letter-spacing:.06em}
+.fchain{display:inline-flex; flex-wrap:wrap; align-items:center; gap:6px}
+.fchain .ch{font:600 12px/1 var(--font-ui); padding:7px 11px; border-radius:99px; background:var(--surface-2); color:var(--ink-3)}
+.fchain .ch.on{background:var(--good-soft); color:var(--good)}
+.fchain .ch.cur{background:var(--accent-soft); color:var(--accent-2); box-shadow:inset 0 0 0 1px var(--accent)}
+.fchain .ch.ret{background:var(--warn-soft); color:var(--warn-ink)}
+.fchain .ch-a{color:var(--ink-3); font-size:12px}
+.repday,.tlday{margin-bottom:14px} .repday > .eyebrow,.tlday > .eyebrow{margin:4px 0 8px}
+.rep-i{display:flex; align-items:center; gap:12px; padding:11px 14px; border-radius:14px; background:var(--surface-2); border:0; color:var(--ink); font:inherit; font-size:13px; cursor:pointer; text-align:left; width:100%; margin-bottom:6px}
+.rep-i:hover{background:var(--surface-3)}
+.rep-i .sev{width:4px; align-self:stretch; border-radius:2px; flex:none}
+.rep-i .tx{flex:1; min-width:0; display:flex; flex-direction:column; gap:3px}
+.rep-i .m,.att-i .rt .m{font-size:11.5px; color:var(--ink-3)}
+.rep-i .rt,.att-i .rt{display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex:none}
+.sig{position:relative}
+.sig .att-i{padding-right:170px}
+.sig-a{position:absolute; right:38px; top:50%; transform:translateY(-50%); display:flex; gap:10px}
+.sig-a .lnk{font-size:12px}
+.ccs{display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:10px}
+.cc{background:var(--surface); border-radius:var(--r-md); padding:14px 16px; box-shadow:var(--shadow); border:0; color:var(--ink); font:inherit; text-align:left; display:flex; flex-direction:column; gap:8px; min-width:0}
+button.cc{cursor:pointer} button.cc:hover{box-shadow:var(--shadow), inset 0 0 0 1px var(--accent)}
+.cc-h{display:flex; justify-content:space-between; align-items:center; font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-2)}
+.cc-h svg{width:14px; height:14px; color:var(--ink-3)}
+.cc-r{display:flex; justify-content:space-between; gap:10px; font-size:12.5px; color:var(--ink-2); padding:3px 0}
+.cc-r b{color:var(--ink); font-variant-numeric:tabular-nums; white-space:nowrap}
+.cc-f{font-size:11.5px; color:var(--ink-3); border-top:1px solid var(--line); padding-top:8px}
+.tl-i{display:flex; gap:12px; align-items:flex-start; width:100%; text-align:left; background:none; border:0; border-bottom:1px solid var(--line); padding:9px 2px; color:var(--ink); font:inherit; font-size:13px; cursor:pointer}
+.tl-i:disabled{cursor:default}
+.tl-i:hover:not(:disabled) .x{color:var(--accent-2)}
+.tl-i .k{width:8px; height:8px; border-radius:50%; margin-top:6px; flex:none}
+.tl-i .x{flex:1; min-width:0} .tl-i small{display:block; color:var(--ink-3); font-size:11.5px; margin-top:2px}
+.wc-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:4px 24px}
+.wc-note{margin-top:14px; font-size:13px} .wc-note summary{cursor:pointer; font-weight:600; color:var(--accent-2)}
+.att-i[disabled]{cursor:default}
+.btn .role{font-weight:500; opacity:.75; margin-right:2px}
+@media (min-width:1100px){ .grid2.q2{grid-template-columns:minmax(0,1.6fr) minmax(0,1fr)} }
+.att-i .rt .chip{white-space:nowrap}
+@media (max-width:640px){ .att-i .rt .chip{white-space:normal; text-align:right} .sig .att-i{padding-right:14px} .sig-a{position:static; transform:none; padding:4px 14px 8px} }
 </style>
 
 <aside class="sidebar" id="sidebar" aria-label="Навигация"></aside>
@@ -704,7 +745,9 @@ img.thumb{width:72px; height:48px; object-fit:cover; border-radius:8px; display:
 <script src="assets/store.js"></script>
 <script src="assets/engine.js"></script>
 <script src="assets/engine-records.js"></script>
+<script src="assets/engine-flow.js"></script>
 <script src="assets/config.js"></script>
 <script src="assets/ui.js"></script>
 <script src="assets/ui-work.js"></script>
+<script src="assets/ui-flow.js"></script>
 <script src="assets/admin.js"></script>

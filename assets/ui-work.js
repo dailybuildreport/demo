@@ -1,5 +1,5 @@
 /*
- * Цифровой штаб строительства — рабочие экраны универсального интерфейса:
+ * FLOW — Цифровой штаб строительства. Рабочие экраны универсального интерфейса:
  * Ресурсы, Календарь (события, письма), Протокольные поручения, Документы
  * (РД/ПД/ИД/КС/отчёты/письма/протоколы), Бюджет → Договор → КС-2.
  * Экраны одинаковы для всех проектов и строятся только из модели DSF.build().
@@ -96,7 +96,7 @@
   /* ====================================================================
    * КАЛЕНДАРЬ
    * ==================================================================== */
-  const CAL_TYPES = ['conference', 'meeting', 'acceptance', 'inspection', 'rd', 'delivery', 'control', 'site', 'order', 'other', 'milestone', 'start', 'finish'];
+  const CAL_TYPES = ['conference', 'meeting', 'acceptance', 'inspection', 'rd', 'delivery', 'control', 'site', 'order', 'guarantee', 'remark', 'other', 'milestone', 'start', 'finish'];
   const USER_TYPES = Object.keys(DSF.EVENT_TYPES).filter(k => DSF.EVENT_TYPES[k].user);
   function calFilter(e) {
     if (!UI.calTypes) UI.calTypes = new Set(CAL_TYPES);
@@ -175,6 +175,7 @@
         ${linkBlock('КС-2 / заявка на приёмку', ks ? links(M, [ks.id]) : '')}
         ${linkBlock('Протокол совещания', protos.length ? links(M, protos.map(p => p.id)) : '')}
         ${linkBlock('Письма', lettersOf.length ? links(M, lettersOf.map(l => l.id)) : '')}
+        ${DSF.uiFlow ? DSF.uiFlow.eventExtra(M, e) : ''}
       </div>
       <div class="mf">
         ${lt ? `<button class="btn primary" type="button" data-x="letter" data-id="${esc(e.id)}">${ico('mail')}${lt === 'invite' ? 'Подготовить приглашение' : 'Подготовить письмо'}</button>` : ''}
@@ -515,6 +516,7 @@
     }).join('');
     const loose = docs.filter(d => !d.taskIds.length);
     const st = secStats(docs);
+    if (DSF.uiFlow) return DSF.uiFlow.idSummary(M) + `<section class="panel"><header><h2>ИД по работам</h2><span class="sub">работа → исполнительная документация → приёмка → КС-2</span></header><div class="pad">${blocks || '<div class="empty">Работ с ИД нет.</div>'}${loose.length ? `<div class="idb"><div class="idb-h"><b>Без привязки к работе</b></div><div class="qlinks">${loose.map(d => objLink(M, d.id, d.code + ' — ' + d.title)).join('')}</div></div>` : ''}</div></section>`;
     return `<section class="tiles">${tile('Документов ИД', num(st.plan), 'по ' + tasks.length + ' работам')}${tile('Подписано', num(st.actual), '', 'good')}${tile('На проверке', num(st.rev))}${tile('Не загружено', num(st.none), 'ожидается от подрядчиков', st.none ? 'warn' : 'good')}</section>
       <section class="panel"><header><h2>ИД по работам</h2><span class="sub">работа → исполнительная документация → приёмка → КС-2 · выполняемые работы и работы с загруженной ИД${hidden ? ' · завершённых без ИД в реестре: ' + hidden : ''}</span></header><div class="pad">${blocks}
         ${loose.length ? `<div class="idb"><div class="idb-h"><b>Без привязки к работе</b></div><div class="qlinks">${loose.map(d => objLink(M, d.id, d.code + ' — ' + d.title)).join('')}</div></div>` : ''}</div></section>`;
@@ -616,6 +618,7 @@
       <section class="panel"><header><div style="min-width:0; flex:1"><div class="eyebrow">${l.dir === 'in' ? 'Входящее письмо' : 'Исходящее письмо'}${l.user ? ' · подготовлено в системе' : ''}</div><h2 style="margin-top:6px">${esc(l.subject)}</h2></div>${chip(l.status, l.status === 'Черновик' ? 'warn' : 'good')}</header>
         <div class="pad grid2" style="gap:24px"><div>${kv([[l.dir === 'in' ? 'Входящий №' : 'Исходящий №', esc(l.no)], ['Дата', fd(l.d)], ['Отправитель', esc(l.from)], ['Получатель', esc(l.to)], ['Статус', esc(l.status)]])}
           ${l.body ? `<pre class="letter">${esc(l.body)}</pre>` : ''}
+          ${DSF.uiFlow ? DSF.uiFlow.letterExtra(M, l) : ''}
           ${l.status === 'Черновик' ? `<div class="note warn" style="margin-top:10px">Черновик не отправлен: в демо-версии почтовая интеграция не подключена.</div>` : ''}</div>
           <div>${linkBlock('Документы', l.docIds.length ? links(M, l.docIds) : '')}${linkBlock('Работы', l.taskIds.length ? links(M, l.taskIds) : '')}${linkBlock('Поручения', l.orderIds.length ? links(M, l.orderIds) : '')}${linkBlock('События', l.eventIds.length ? links(M, l.eventIds) : '')}</div></div></section>`;
     return { html, crumb: l.no, crumbParent: { t: 'Письма', go: link(P.id, 'docs', 'letters') } };
@@ -769,7 +772,7 @@
   function contractCard(M, c) {
     const P = M.P, it = M.itemBy.get(c.item);
     const idDocs = M.documents.filter(d => d.cat === 'id' && d.taskIds.some(id => c.tasks.some(t => t.id === id)));
-    const canNew = c.tasks.length && c.unacted > 0.5 && !c.ks.some(k => DSF.KS_STATUS[k.status].r < 5 && k.status !== 'rejected');
+    const canNew = DSF.can('ksgc') && c.tasks.length && c.unacted > 0.5 && !c.ks.some(k => DSF.KS_STATUS[k.status].r < 5 && k.status !== 'rejected');
     const html = `<div class="topback">${backBtn(link(P.id, 'budget'), 'Бюджет')}</div>
       <section class="panel"><header style="flex-wrap:wrap"><div style="min-width:0; flex:1 1 320px"><div class="eyebrow">Договор · статья «${esc(it ? it.name : c.item || '—')}»</div><h2 style="margin-top:6px">${esc(c.no)} от ${fd(c.d)} — ${esc(c.subject)}</h2><div class="muted" style="font-size:13px; margin-top:4px">${esc(c.contractor)} · аванс ${Math.round(c.adv * 100)}% · гарантийное удержание ${Math.round(c.ret * 100)}%</div></div>
         <div class="hd-r">${canNew ? `<button class="btn primary" type="button" data-x="ks-new" data-cid="${c.id}">${ico('plus')}КС-2 от подрядчика</button>` : ''}<button class="btn" type="button" data-x="ct-edit" data-cid="${c.id}">${ico('edit')}Договор</button><button class="btn" type="button" data-x="ct-supp" data-cid="${c.id}">${ico('plus')}Доп. соглашение</button>${M.fin.entered ? `<button class="btn" type="button" data-x="ct-act" data-cid="${c.id}">${ico('plus')}Внести КС-2</button><button class="btn" type="button" data-x="ct-pay" data-cid="${c.id}">${ico('plus')}Оплата</button>` : ''}</div></header>
@@ -806,7 +809,7 @@
       accept: [ROLE.tz, 'Назначить приёмку'], accepted: [ROLE.tz, 'Работы приняты'], partial: [ROLE.tz, 'Принято частично'], rejected: [ROLE.tz, 'Не принято — замечания'],
       formed: [ROLE.gc, 'Сформировать КС-2 по принятому объёму'], agreed: [ROLE.tz, 'Согласовать КС-2'], period: [ROLE.tz, 'Включить в расчётный период']
     };
-    return nx.map(to => `<button class="btn ${['accept', 'formed', 'agreed', 'pre', 'accepted', 'sent', 'review', 'period'].includes(to) ? 'primary' : ''}" type="button" data-x="ks-act" data-ks="${esc(k.id)}" data-to="${to}"><span class="role">${L[to][0]}:</span> ${L[to][1]}</button>`).join('');
+    return nx.filter(to => DSF.can(['sent', 'formed'].includes(to) ? 'ksgc' : 'kstz')).map(to => `<button class="btn ${['accept', 'formed', 'agreed', 'pre', 'accepted', 'sent', 'review', 'period'].includes(to) ? 'primary' : ''}" type="button" data-x="ks-act" data-ks="${esc(k.id)}" data-to="${to}"><span class="role">${L[to][0]}:</span> ${L[to][1]}</button>`).join('');
   }
   function ksCard(M, k) {
     const P = M.P, c = k.contract, st = ksSt(k), r = st.r;
@@ -830,6 +833,7 @@
           ${ksActions(k) ? `<div class="mf" style="padding:14px 0 0">${ksActions(k)}${ev ? `<button class="btn" type="button" data-x="letter" data-id="${esc(ev.id)}">${ico('mail')}Подготовить приглашение на приёмку</button>` : ''}</div>` : ev ? `<div class="mf" style="padding:14px 0 0"><button class="btn" type="button" data-x="letter" data-id="${esc(ev.id)}">${ico('mail')}Подготовить письмо по приёмке</button></div>` : ''}
           ${k.note ? `<div class="note warn" style="margin-top:12px">${esc(k.note)}</div>` : ''}
         </div></section>
+      ${DSF.uiFlow ? DSF.uiFlow.ksExtra(M, k) : ''}
       <div class="grid2">
         <section class="panel"><header><h2>Заявленные работы</h2><span class="sub">объём за период по работам графика · млн ₽</span></header>
           <div class="pad tbl-wrap"><table class="t"><thead><tr><th class="l">Работа</th><th>Объём в периоде</th><th>По графику</th><th>Заявлено</th></tr></thead>
@@ -848,7 +852,8 @@
     const c = M.contractBy.get(UI.ksTarget);
     return `<form data-form="ks-new" class="mform"><div class="mh"><div><div class="eyebrow">${ROLE.gc} · ${esc(c.contractor)}</div><h3 style="margin-top:4px">Предварительная КС-2 по договору ${esc(c.no)}</h3></div><button class="icon-btn" type="button" data-act="x-close" aria-label="Закрыть">${ico('x')}</button></div>
       <div class="mb"><div class="note">Заявка подрядчика не считается принятым выполнением: сумма попадёт в «Заявлено», в «Принято» — только после приёмки Техническим заказчиком.</div>
-        ${kv([['Выполнено после последней КС-2', mln(c.unacted) + ' млн ₽ (по графику работ)'], ['Период', mon(monthStart(T()))]])}
+        ${kv([['Выполнено после последней КС-2', mln(c.unacted) + ' млн ₽ — по подтверждённому ежедневному факту'], ['Период', mon(monthStart(T()))]])}
+        ${DSF.uiFlow ? DSF.uiFlow.ksNewExtra(M, c) : ''}
         <div class="fld"><label for="ks-claim">Заявляемая сумма, млн ₽</label><input id="ks-claim" name="claimed" type="number" step="0.1" min="0.1" required value="${(Math.round(c.unacted * 10) / 10).toFixed(1)}" autofocus></div>
         <div class="fld"><label for="ks-note">Комментарий подрядчика</label><input id="ks-note" name="note"></div></div>
       <div class="mf"><button class="btn primary" type="submit">${ico('check')}Создать черновик КС-2</button><button class="btn" type="button" data-act="x-close">Отмена</button></div></form>`;

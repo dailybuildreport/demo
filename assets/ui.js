@@ -1,5 +1,5 @@
 /*
- * Цифровой штаб строительства — универсальный интерфейс.
+ * FLOW — Цифровой штаб строительства. Универсальный интерфейс.
  * Все экраны строятся из модели DSF.build(project). Ни одной строки
  * под конкретный объект: проект определяет содержание, а не вёрстку.
  */
@@ -237,7 +237,7 @@
     document.getElementById('sidebar').innerHTML = `
       <button class="sb-brand" type="button" data-go="" title="Портфель проектов">
         <span class="logo">${ico('building')}</span>
-        <span class="sb-text"><div class="sb-name">Цифровой штаб<br>строительства</div><div class="sb-sub">Демо-версия</div></span>
+        <span class="sb-text"><div class="sb-name">FLOW</div><div class="sb-sub">Цифровой штаб строительства · демо</div></span>
       </button>
       <button class="sb-proj" type="button" data-act="switch" title="Сменить проект">
         ${proj ? miniRing(M, 34, '#F2F5FA') : `<span class="logo" style="background:var(--sb-hover)">${ico('layers')}</span>`}
@@ -298,7 +298,7 @@
     const Ms = models();
     const head = `<section class="head" style="display:flex; flex-wrap:wrap; gap:14px 24px; align-items:flex-end">
       <div style="flex:1 1 420px; min-width:0">
-        <div class="eyebrow">Цифровой штаб строительства · портфель</div>
+        <div class="eyebrow">FLOW — Цифровой штаб строительства · портфель</div>
         <h1 style="margin-top:8px">Портфель <span class="ac">проектов</span></h1>
         <p class="muted" style="margin-top:8px; max-width:70ch">Все объекты работают на одной архитектуре: экраны строятся из данных и настроек объекта. Новый объект подключается через «Добавить объект» без изменения кода.</p>
       </div>
@@ -401,6 +401,10 @@
     const kpi = (sec, sub, title, inner) => secOn(M, sec) ? `<button class="kpi" type="button" data-go="${link(P.id, sec, sub)}" title="${esc(title)}">${inner(true)}</button>` : `<div class="kpi kpi-static">${inner(false)}</div>`;
     const top = (t, on) => `<div class="kpi-top"><span class="t">${t}</span>${on ? `<span class="go">${ico('arrow')}</span>` : ''}</div>`;
     const setLink = can('settings') ? `<button class="lnk" type="button" data-go="${link(P.id, 'settings', 'readiness')}">Настроить готовность ${ico('chev')}</button>` : '';
+    const attentionPanel = () => `<section class="panel">
+        <header><h2>Требует внимания</h2><span class="sub">${M.attention.length} ${plural(M.attention.length, 'вопрос', 'вопроса', 'вопросов')}</span><span class="grow"></span>${secOn(M, 'orders') ? `<button class="lnk" type="button" data-go="${link(P.id, 'orders')}">Все поручения ${ico('chev')}</button>` : ''}</header>
+        <div class="pad">${M.attention.length ? `<div class="att">${M.attention.slice(0, 6).map(a => `<button class="att-i" type="button" data-go="${attGo(a)}" ${a.task ? `data-task="${a.task.id}"` : ''}><span class="sev" style="background:${stVar(a.sev)}"></span><span class="tx">${a.kind === 'order' ? `<span class="chip ${a.order.status === 'overdue' ? 'crit' : 'warn'}" style="margin-right:6px">${a.order.status === 'overdue' ? 'Просрочено' : 'Критическое'}</span>` : ''}${esc(a.text)}<div class="m">${esc(a.meta || '')}</div></span>${ico('chev')}</button>`).join('')}</div>` : '<div class="empty">Просроченных и критических поручений нет.</div>'}</div>
+      </section>`;
     const html = `
     ${stamp(M, `<div><dt>Заказчик</dt><dd style="font-size:13.5px">${esc(P.customer) || '—'}</dd></div><div><dt>Отчётная дата</dt><dd>${fd(t)}</dd></div>`)}
     <section class="kpis kpis4" aria-label="Ключевые показатели">
@@ -425,16 +429,14 @@
         </div>
         <div class="kpi-foot">${RS.has ? `<span>план рабочих ${num(RS.planNowWf)}</span><span>неделя ${fds(RS.lastWeek)}</span>${RS.fact.length > 1 ? spark(RS.fact, RS.plan, 90, 26) : ''}` : '<span>данные о ресурсах ещё не вносились</span>'}</div>`)}
     </section>
+    ${DSF.uiFlow ? DSF.uiFlow.controlBlocks(M) + DSF.uiFlow.signalsPanel(M) : ''}
 
-    <div class="grid2">
+    <div class="${DSF.uiFlow ? '' : 'grid2'}">
       ${secOn(M, 'schedule') ? `<section class="panel">
         <header><h2>График реализации</h2><span class="sub">этапы: факт и прогноз против плана</span><span class="grow"></span><button class="lnk" type="button" data-go="${link(P.id, 'schedule')}">Диаграмма Ганта ${ico('chev')}</button></header>
         <div class="pad">${miniGantt(M)}${R.pc == null && M.tasks.length ? `<div class="note" style="margin-top:12px">Общая готовность не рассчитывается: для объекта не заданы правила участия работ и весовые коэффициенты. ${setLink}</div>` : ''}</div>
       </section>` : ''}
-      <section class="panel">
-        <header><h2>Требует внимания</h2><span class="sub">${M.attention.length} ${plural(M.attention.length, 'вопрос', 'вопроса', 'вопросов')}</span><span class="grow"></span>${secOn(M, 'orders') ? `<button class="lnk" type="button" data-go="${link(P.id, 'orders')}">Все поручения ${ico('chev')}</button>` : ''}</header>
-        <div class="pad">${M.attention.length ? `<div class="att">${M.attention.slice(0, 6).map(a => `<button class="att-i" type="button" data-go="${attGo(a)}" ${a.task ? `data-task="${a.task.id}"` : ''}><span class="sev" style="background:${stVar(a.sev)}"></span><span class="tx">${a.kind === 'order' ? `<span class="chip ${a.order.status === 'overdue' ? 'crit' : 'warn'}" style="margin-right:6px">${a.order.status === 'overdue' ? 'Просрочено' : 'Критическое'}</span>` : ''}${esc(a.text)}<div class="m">${esc(a.meta || '')}</div></span>${ico('chev')}</button>`).join('')}</div>` : '<div class="empty">Просроченных и критических поручений нет.</div>'}</div>
-      </section>
+      ${DSF.uiFlow ? '' : attentionPanel()}
     </div>
 
     ${secOn(M, 'photos') ? `<section class="panel">
@@ -452,7 +454,7 @@
     return a.join(' · ') || 'без прямого влияния на срок и стоимость';
   }
   function feedRow(d, color, text, small) { return `<div class="fe"><span class="d">${fds(d)}</span><span class="k" style="background:${color}"></span><span class="x">${text}${small ? `<small>${esc(small)}</small>` : ''}</span></div>`; }
-  function evColor(type) { return ({ milestone: 'var(--accent)', conference: 'var(--accent)', meeting: 'var(--accent-2)', rd: 'var(--accent-2)', delivery: 'var(--warn)', acceptance: 'var(--good)', inspection: 'var(--good)', finish: 'var(--good)', control: 'var(--crit)', order: 'var(--warn)', site: 'var(--ink-2)', other: 'var(--ink-3)', start: 'var(--ink-3)' }[type] || 'var(--ink-3)'); }
+  function evColor(type) { return ({ milestone: 'var(--accent)', conference: 'var(--accent)', meeting: 'var(--accent-2)', rd: 'var(--accent-2)', delivery: 'var(--warn)', acceptance: 'var(--good)', inspection: 'var(--good)', finish: 'var(--good)', control: 'var(--crit)', order: 'var(--warn)', guarantee: 'var(--warn)', remark: 'var(--crit)', site: 'var(--ink-2)', other: 'var(--ink-3)', start: 'var(--ink-3)' }[type] || 'var(--ink-3)'); }
   function feedColor(k) { return ({ done: 'var(--good)', ms: 'var(--accent)', start: 'var(--accent-2)', decision: 'var(--ink)', risk: 'var(--crit)' }[k] || evColor(k)); }
   function feedLabel(e) { return ({ done: 'работа завершена', ms: 'веха', start: 'начало работ', decision: 'решение · ' + (e.by || ''), risk: 'риск' }[e.kind] || (DSF.EVENT_TYPES[e.kind] || {}).t || ''); }
   function budgetStack(M) {
@@ -524,7 +526,7 @@
     const px = (SCALES[UI.gScale] || 3) * (window.innerWidth < 768 && UI.gScale !== 'week' ? 0.6 : 1);
     const t = T();
     const editBtn = can('schedule') ? `<button class="btn" type="button" data-go="${link(P.id, 'settings', 'schedule')}">${ico('edit')}Изменить график</button>` : '';
-    const factBtn = can('data') && M.tasks.some(x => !x.ms) ? `<button class="btn primary" type="button" data-x="fact-entry">${ico('check')}Внести факт</button>` : '';
+    const factBtn = (can('fact') && M.tasks.some(x => !x.ms) ? `<button class="btn primary" type="button" data-x="rep-new">${ico('plus')}Подать ежедневный факт</button>` : '') + (can('settings') && M.tasks.some(x => !x.ms) ? `<button class="btn" type="button" data-x="fact-entry" title="Административная корректировка факта на начало журнала">${ico('edit')}Корректировка факта</button>` : '');
     if (!M.tasks.length) return { html: `<section class="head" style="display:flex; flex-wrap:wrap; gap:12px 20px; align-items:flex-end"><div style="flex:1 1 360px; min-width:0"><div class="eyebrow">${esc(P.name)} · реализация</div><h1 style="margin-top:8px; font-size:clamp(24px,2.6vw,34px)">График <span class="ac">работ</span></h1></div><div class="hd-r">${editBtn}</div></section>
       <section class="panel"><div class="pad"><div class="empty">Структура графика ещё не задана: добавьте этапы, работы и ключевые вехи в настройках объекта.</div></div></section>` };
     const vis = M.tasks.filter(x => !x.hidden || UI.gHidden);
@@ -675,8 +677,9 @@
       ${rs.length ? `<div><div class="eyebrow" style="margin-bottom:6px">Связанные риски</div>${rs.map(r => `<div style="font-size:12.5px; margin-bottom:4px">${chip(r.status, r.realized ? 'crit' : 'neutral')} ${esc(r.title)}${r.eff.days ? ' · +' + r.eff.days + ' дн.' : ''}</div>`).join('')}</div>` : ''}
       ${ev.length ? `<div><div class="eyebrow" style="margin-bottom:6px">События</div>${ev.map(e => `<div style="font-size:12.5px; margin-bottom:3px"><span class="num faint">${fd(e.date)}</span> · ${esc(e.title)}</div>`).join('')}</div>` : ''}
       ${docsOfTask(M, x)}
+      <button class="btn sm" type="button" data-x="work" data-id="${x.id}">${ico('target')}Почему так — карточка работы</button>
       ${ph.length ? `<div class="thumbs">${ph.slice(0, 2).map(p => photoCard(M, p)).join('')}</div>` : ''}
-      ${(can('data') && !x.ms) || can('schedule') ? `<div class="fchips">${can('data') && !x.ms ? `<button class="btn sm primary" type="button" data-x="fact-entry" data-id="${x.id}">${ico('check')}Внести факт</button>` : ''}${can('schedule') ? `<button class="btn sm" type="button" data-x="task-edit" data-id="${x.id}">${ico('edit')}Изменить работу</button>` : ''}</div>` : ''}
+      ${(can('fact') && !x.ms) || can('schedule') ? `<div class="fchips">${can('fact') && !x.ms && !x.done ? `<button class="btn sm primary" type="button" data-x="rep-new">${ico('plus')}Подать факт</button>` : ''}${can('schedule') ? `<button class="btn sm" type="button" data-x="task-edit" data-id="${x.id}">${ico('edit')}Изменить работу</button>` : ''}</div>` : ''}
     </div>`;
   }
   function docsOfTask(M, x) {
@@ -838,7 +841,7 @@
     else if (!secOn(M, r.sec)) v = { html: `<section class="panel" style="margin-top:12px"><div class="pad"><div class="empty">Раздел «${esc(secTitle(r.sec))}» отключён для этого объекта.${can('settings') ? ` <button class="lnk" type="button" data-go="${link(M.P.id, 'settings', 'sections')}">Настроить разделы ${ico('chev')}</button>` : ''}</div></div></section>` };
     else v = (VIEWS[r.sec] || VIEWS.overview)(M, r);
     document.getElementById('app').innerHTML = topbar(r, M, v) + v.html;
-    document.title = (M ? M.P.name + ' · ' + (v.crumb || secShort(r.sec)) + ' — ' : (v.title ? v.title + ' — ' : '')) + 'Цифровой штаб строительства';
+    document.title = (M ? M.P.name + ' · ' + (v.crumb || secShort(r.sec)) + ' — ' : (v.title ? v.title + ' — ' : '')) + 'FLOW — Цифровой штаб строительства';
     guard(document.getElementById('app')); guard(document.getElementById('sidebar'));
     renderLayer();
     if (v.after) v.after();
@@ -949,13 +952,16 @@
   /* ---------- загрузка датасетов по манифесту ---------- */
   function boot() {
     const need = (DSF.manifest || []).filter(id => !byId(id));
+    // производственный контур демо-объектов (вымышленные отчёты, ИД, замечания) — дополнения к датасетам
+    const flow = DSF.flowManifest || [];
     // файлы (IndexedDB) и реестр объектов подключаются до первой отрисовки
     const start = () => { const go2 = () => { if (DSF.registry) DSF.registry.apply(); order(); render(); }; if (DSF.files) DSF.files.init().then(go2, go2); else go2(); };
-    if (!need.length) { start(); return; }
-    let left = need.length;
-    need.forEach(id => {
+    const files = need.map(id => 'data/projects/' + id + '.js').concat(flow.filter(id => !(DSF.augments || {})[id]).map(id => 'data/flow/' + id + '.js'));
+    if (!files.length) { start(); return; }
+    let left = files.length;
+    files.forEach(src => {
       const s = document.createElement('script');
-      s.src = 'data/projects/' + id + '.js'; s.charset = 'utf-8';
+      s.src = src; s.charset = 'utf-8';
       s.onload = s.onerror = () => { if (--left === 0) start(); };
       document.head.appendChild(s);
     });

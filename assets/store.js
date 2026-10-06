@@ -2,7 +2,8 @@
  * Хранилище действий пользователя (журнал изменений поверх датасета).
  *
  * Датасет проекта не изменяется. Всё, что делает пользователь — события календаря,
- * загруженные документы и их движение, поручения, КС-2 подрядчика, черновики писем —
+ * загруженные документы и их движение, поручения, КС-2 подрядчика, письма (в т. ч. гарантийные),
+ * ежедневные отчёты и их подтверждение, замечания стройконтроля, решения по сигналам —
  * записывается сюда как отдельные записи и операции, а движок накладывает их на
  * датасет при сборке модели. Так у каждого объекта остаётся единственный источник.
  *
@@ -22,7 +23,8 @@
     remove(key) { try { root.localStorage && root.localStorage.removeItem(key); } catch (e) { /* нет доступа */ } }
   };
 
-  const EMPTY = () => ({ v: 1, seq: 1, events: [], eventOps: [], docs: [], docOps: [], orders: [], orderOps: [], ks: [], ksOps: [], letters: [] });
+  const KINDS = ['events', 'eventOps', 'docs', 'docOps', 'orders', 'orderOps', 'ks', 'ksOps', 'letters', 'reports', 'reportOps', 'remarks', 'remarkOps', 'decisions', 'notes'];
+  const EMPTY = () => Object.assign({ v: 1, seq: 1 }, Object.fromEntries(KINDS.map(k => [k, []])));
   const cache = new Map();
   const files = new Map();   // id файла → { url, name, size, type } (только текущая вкладка)
   const listeners = [];
@@ -51,7 +53,8 @@
       (pid ? [pid] : [...cache.keys()]).forEach(p => { cache.set(p, EMPTY()); store.adapter.remove(store.key(p)); if (DSF.invalidate) DSF.invalidate(p); });
       listeners.forEach(l => l(pid));
     },
-    count(pid) { const s = store.get(pid); return s.events.length + s.eventOps.length + s.docs.length + s.docOps.length + s.orders.length + s.orderOps.length + s.ks.length + s.ksOps.length + s.letters.length; },
+    count(pid) { const s = store.get(pid); return KINDS.reduce((n, k) => n + (Array.isArray(s[k]) ? s[k].length : 0), 0); },
+    KINDS,
     onChange(fn) { listeners.push(fn); },
     /* файлы — через общее хранилище файлов (IndexedDB в демо), см. config.js */
     putFile(file) {
