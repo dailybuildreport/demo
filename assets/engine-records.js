@@ -87,6 +87,12 @@
 
   DSF.extensions.push(function records(ctx) {
     const { P, S, T, byId, contracts, events } = ctx;
+    /* категории и разделы документации: системные + настроенные для объекта */
+    const docCats = Object.assign({}, DSF.DOC_CATS);
+    (P.docCats || []).filter(c => c && c.key && !DSF.DOC_CATS[c.key]).forEach(c => { docCats[c.key] = { t: c.t || c.key, full: c.full || c.t || c.key, custom: true, versioned: true, sections: true }; });
+    const docSecNames = Object.assign({}, DSF.DOC_SECTIONS);
+    (P.docSections || []).forEach(x => { if (x && x.code) docSecNames[x.code] = x.name || docSecNames[x.code] || x.code; });
+    Object.assign(ctx, { docCats, docSecNames, docSections: (P.docSections || []).filter(x => x && x.code && !x.archived) });
     const contractor = taskIds => { for (const id of taskIds) { const t = byId.get(id); const c = t && t.contract && contracts.find(z => z.id === t.contract); if (c) return c.contractor; } return P.gc || ''; };
 
     /* ---------- документы ---------- */
@@ -221,7 +227,7 @@
     M.documents.forEach(d => {
       const n = '«' + (d.code || d.title) + '»';
       if (seen.has(d.id)) E('Повтор документа ' + n); seen.add(d.id);
-      if (!DSF.DOC_CATS[d.cat]) E(n + ': неизвестная категория ' + d.cat);
+      if (!(M.docCats || DSF.DOC_CATS)[d.cat]) E(n + ': неизвестная категория ' + d.cat);
       d.taskIds.forEach(id => { if (!M.byId.get(id)) E(n + ': связь с несуществующей работой ' + id); });
       d.versions.forEach(v => {
         if (v.d == null) E(n + ' ред. ' + v.rev + ': нет даты');

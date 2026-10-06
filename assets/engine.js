@@ -32,6 +32,18 @@
 
   /* ---------- справочники (общие для всех проектов) ---------- */
   DSF.RISK_STATUS = ['Реализуется', 'Открыт', 'Под контролем', 'Закрыт'];
+  DSF.PROJECT_STATUS = {
+    plan:   { t: 'Подготовка', c: 'neutral' },
+    active: { t: 'Строительство', c: 'accent' },
+    pause:  { t: 'Приостановлен', c: 'warn' },
+    done:   { t: 'Завершён', c: 'good' }
+  };
+  /* правила расчёта общей готовности объекта (настраиваются для каждого объекта) */
+  DSF.READINESS_MODES = {
+    cost:   { t: 'По стоимости работ', d: 'Вес работы = её стоимость. Работы статей с отметкой «не участвует в готовности» исключаются.' },
+    weight: { t: 'По весовым коэффициентам', d: 'Вес задаётся этапам и работам вручную. Работы без веса в готовности не участвуют.' },
+    manual: { t: 'Вручную', d: 'Плановая и фактическая готовность вводятся на отчётную дату.' }
+  };
   DSF.riskLevel = score => score >= 15 ? 'high' : score >= 8 ? 'mid' : 'low';
   /* типы событий календаря: пользовательские + системные (из графика) */
   DSF.EVENT_TYPES = {
@@ -116,7 +128,7 @@
       return o;
     }
     tasks.forEach(fwd);
-    const fin = finalId && res.get(finalId) ? res.get(finalId).ef : Math.max(...[...res.values()].map(r => r.ef));
+    const fin = finalId && res.get(finalId) ? res.get(finalId).ef : (res.size ? Math.max(...[...res.values()].map(r => r.ef)) : null);
     return { res, end: fin };
   }
 
@@ -150,28 +162,43 @@
     if (P.__model) return P.__model;
     const T = dn(DSF.config.today);
     const S = (DSF.store && DSF.store.get(P.id)) || {};
+    const BUDGET = P.budget || { reserve: 0, items: [] };
+    const DATES = P.dates || {};
+    const RD = Object.assign({ mode: 'cost' }, P.readiness || {});
+    const entered = P.finance === 'entered';   // финансы только из введённых данных, без модели актов
     ['events', 'eventOps', 'docs', 'docOps', 'orders', 'orderOps', 'ks', 'ksOps', 'letters'].forEach(k => { if (!Array.isArray(S[k])) S[k] = []; });
-    const items = (P.budget.items || []).map(it => Object.assign({ inReadiness: true }, it));
+    const items = (BUDGET.items || []).map(it => Object.assign({ inReadiness: true }, it));
     const itemBy = new Map(items.map(i => [i.code, i]));
 
-    const tasks = P.tasks.map((x, i) => {
+    const tasks = (P.tasks || []).filter(x => !x.archived).map((x, i) => {
       const t = Object.assign({}, x);
       t.idx = i;
       t.ms = !!x.ms;
       t.s0 = dn(x.ps || x.pf); t.f0 = dn(x.pf || x.ps);
       t.as = dn(x.as); t.af = dn(x.af);
-      t.pct = x.ms ? (x.af ? 100 : 0) : (x.pct || 0);
+      t.directive = dn(x.directive);
+      // объёмы: общий, плановый на отчётную дату, фактический; % считается из объёма, если он задан
+      t.qty = +x.qty > 0 ? +x.qty : null;
+      t.qtyFact = x.qtyFact != null && x.qtyFact !== '' ? +x.qtyFact : null;
+      t.qtyPlan = x.qtyPlan != null && x.qtyPlan !== '' ? +x.qtyPlan : null;
+      const volPct = t.qty && t.qtyFact != null ? Math.min(100, Math.round(t.qtyFact / t.qty * 1000) / 10) : null;
+      t.pct = x.ms ? (x.af ? 100 : 0) : (volPct != null ? volPct : (+x.pct || 0));
+      t.planOverride = !x.ms && t.qty && t.qtyPlan != null ? clamp(t.qtyPlan / t.qty * 100, 0, 100) : null;
       t.done = t.pct >= 100;
       t.dur = t.ms ? 0 : t.f0 - t.s0 + 1;
       t.cost = t.ms ? 0 : (x.cost || 0);
       t.deps = (x.deps || []).map(parseDep);
       t.stage = x.stage || 'Работы';
       const it = itemBy.get(x.item);
-      t.weighted = !t.ms && (!it || it.inReadiness !== false);
+      t.weighted = !t.ms && (!it || it.inReadiness !== false) && x.inReady !== false;
       return t;
     });
+    // поддержка старых связей на архивные работы: связь снимается
+    const live = new Set(tasks.map(t => t.id));
+    tasks.forEach(t => { t.deps = t.deps.filter(d => d.bad || live.has(d.id) || !(P.tasks || []).some(z => z.id === d.id && z.archived)); });
     const byId = new Map(tasks.map(t => [t.id, t]));
     const finalId = (tasks.find(t => t.final) || {}).id;
+    const T0 = T;
 
     /* риски: оценка и влияние */
     const risks = (P.risks || []).map(r => {
@@ -189,7 +216,8 @@
       return m;
     };
     const base = schedule(tasks, byId, T, extraFor(null), finalId);
-    const lf = backward(tasks, byId, base.res, base.end);
+    if (!isFinite(base.end)) base.end = null;
+    const lf = tasks.length ? backward(tasks, byId, base.res, base.end) : new Map();
     tasks.forEach(t => {
       const r = base.res.get(t.id);
       t.es = r.es; t.ef = r.ef;
@@ -211,7 +239,7 @@
     // вклад каждого реализующегося риска в сдвиг окончания проекта
     risks.forEach(r => {
       r.projectDays = 0;
-      if (r.realized && r.eff.task && r.eff.days) {
+      if (r.realized && r.eff.task && r.eff.days && byId.get(r.eff.task)) {
         const alt = schedule(tasks, byId, T, extraFor(r), finalId);
         r.projectDays = base.end - alt.end;
       }
@@ -219,18 +247,36 @@
     });
 
     /* этапы (группы работ) */
-    const stageNames = [...new Set(tasks.map(t => t.stage))];
+    /* веса готовности: стоимость (как раньше) или коэффициенты объекта; без настройки — не считаются */
+    const cfgStages = (P.stages || []).filter(s => !s.archived);
+    const stageW = new Map(cfgStages.filter(s => +s.weight > 0).map(s => [s.name, +s.weight]));
+    tasks.forEach(t => {
+      if (t.ms || !t.weighted) { t.w = 0; return; }
+      t.w = RD.mode === 'cost' ? t.cost : RD.mode === 'weight' ? (+t.weight > 0 ? +t.weight : 0) : 0;
+    });
+    if (RD.mode === 'weight' && stageW.size) {
+      // вес этапа распределяется между его работами пропорционально их коэффициентам
+      const sw = sum([...stageW.values()]);
+      [...new Set(tasks.map(t => t.stage))].forEach(name => {
+        const ts = tasks.filter(t => t.stage === name && t.w > 0), tw = sum(ts, t => t.w);
+        tasks.filter(t => t.stage === name).forEach(t => { t.w = stageW.has(name) && tw ? stageW.get(name) / sw * t.w / tw * 100 : 0; });
+      });
+    }
+    const stageNames = [...new Set(cfgStages.map(s => s.name).filter(n => tasks.some(t => t.stage === n)).concat(tasks.map(t => t.stage)))];
     const stages = stageNames.map(name => {
       const ts = tasks.filter(t => t.stage === name);
       const w = ts.filter(t => !t.ms);
       const cost = sum(w, t => t.cost);
+      // для отображения этапа: веса готовности, иначе стоимость, иначе равные доли
+      const wt = sum(w, t => t.w) > 0 ? (t => t.w) : cost > 0 ? (t => t.cost) : (() => 1);
+      const wsum0 = sum(w, wt);
       const s = {
         id: 'st' + stageNames.indexOf(name), name, tasks: ts,
         s0: Math.min(...ts.map(t => t.s0)), f0: Math.max(...ts.map(t => t.f0)),
         es: Math.min(...ts.map(t => t.es)), ef: Math.max(...ts.map(t => t.ef)),
-        cost,
-        pct: cost ? sum(w, t => t.cost * t.pct) / cost : (ts.every(t => t.done) ? 100 : 0),
-        planNow: cost ? sum(w, t => t.cost * t.planNow) / cost : 0,
+        cost, weight: stageW.get(name) || null,
+        pct: wsum0 ? sum(w, t => wt(t) * t.pct) / wsum0 : (ts.every(t => t.done) ? 100 : 0),
+        planNow: wsum0 ? sum(w, t => wt(t) * t.planNow) / wsum0 : 0,
         crit: ts.some(t => t.crit),
         done: ts.every(t => t.done),
         started: ts.some(t => t.started)
@@ -244,27 +290,33 @@
     });
 
     /* готовность и сроки */
-    const W = tasks.filter(t => t.weighted);
-    const wsum = sum(W, t => t.cost);
-    const readyAt = (x, fn) => sum(W, t => t.cost * fn(t, x)) / wsum;
-    const start = dn(P.dates.start), planEnd = dn(P.dates.planEnd);
+    const W = tasks.filter(t => t.w > 0);
+    const wsum = sum(W, t => t.w);
+    const readyAt = (x, fn) => wsum > 0 ? sum(W, t => t.w * fn(t, x)) / wsum : null;
+    const nz = a => a.filter(v => v != null && isFinite(v));
+    const start = dn(DATES.start) != null ? dn(DATES.start) : (tasks.length ? Math.min(...nz(tasks.map(t => t.s0))) : null);
+    const planEnd = dn(DATES.planEnd) != null ? dn(DATES.planEnd) : (tasks.length ? Math.max(...nz(tasks.map(t => t.f0))) : null);
+    const actualEnd = dn(DATES.actualEnd);
     const fin = finalId ? byId.get(finalId) : null;
-    const forecastEnd = base.end;
+    const forecastEnd = actualEnd != null ? actualEnd : (base.end != null ? base.end : planEnd);
+    const has = v => v != null && isFinite(v);
     const root = {
-      pc: readyAt(T, (t) => t.pct),
-      planNow: readyAt(T, planPct),
-      start, planEnd, forecastEnd,
-      delay: forecastEnd - planEnd,
-      elapsed: clamp(T - start, 0, planEnd - start), total: planEnd - start
+      mode: RD.mode, configured: RD.mode === 'manual' ? RD.fact != null && RD.fact !== '' : wsum > 0,
+      pc: RD.mode === 'manual' ? (RD.fact != null && RD.fact !== '' ? +RD.fact : null) : readyAt(T, (t) => t.pct),
+      planNow: RD.mode === 'manual' ? (RD.plan != null && RD.plan !== '' ? +RD.plan : null) : readyAt(T, planPct),
+      start, planEnd, forecastEnd, actualEnd,
+      delay: has(forecastEnd) && has(planEnd) ? forecastEnd - planEnd : null,
+      elapsed: has(start) && has(planEnd) ? clamp(T - start, 0, planEnd - start) : null, total: has(start) && has(planEnd) ? planEnd - start : null
     };
-    root.dev = root.pc - root.planNow;
-    root.timePct = root.elapsed / root.total * 100;
-    root.left = Math.max(0, forecastEnd - T);
+    root.dev = root.pc != null && root.planNow != null ? root.pc - root.planNow : null;
+    root.timePct = root.total ? root.elapsed / root.total * 100 : null;
+    root.left = has(forecastEnd) ? Math.max(0, forecastEnd - T) : null;
 
     /* кривые план/факт/прогноз (готовность, %) */
     const curve = [];
-    const c0 = monthStart(Math.min(start, ...tasks.map(t => t.s0))), c1 = monthEnd(Math.max(planEnd, forecastEnd));
-    for (let m = c0; m <= c1; m = addMonths(m, 1)) {
+    const hasSpan = has(start) && has(planEnd);
+    const c0 = hasSpan ? monthStart(Math.min(start, ...nz(tasks.map(t => t.s0)))) : null, c1 = hasSpan ? monthEnd(Math.max(planEnd, has(forecastEnd) ? forecastEnd : planEnd)) : null;
+    if (hasSpan && RD.mode !== 'manual' && wsum > 0) for (let m = c0; m <= c1; m = addMonths(m, 1)) {
       const x = monthEnd(m);
       curve.push({ t: x, plan: readyAt(x, planPct), fact: x <= T ? readyAt(x, factPct) : null, fc: x >= T ? readyAt(x, forecastPct) : null });
     }
@@ -274,7 +326,7 @@
     function fracAt(c, x) {
       const it = itemBy.get(c.item);
       if (c.tasks.length === 0) {
-        if (it && it.mode === 'linear') return clamp((x - start + 1) / (forecastEnd - start + 1), 0, 1);
+        if (it && it.mode === 'linear' && has(start) && has(forecastEnd)) return clamp((x - start + 1) / (forecastEnd - start + 1), 0, 1);
         return 0;
       }
       const b = sum(c.tasks, t => t.cost);
@@ -282,7 +334,7 @@
     }
     function planFracAt(c, x) {
       const it = itemBy.get(c.item);
-      if (c.tasks.length === 0) return it && it.mode === 'linear' ? clamp((x - start + 1) / (planEnd - start + 1), 0, 1) : 0;
+      if (c.tasks.length === 0) return it && it.mode === 'linear' && hasSpan ? clamp((x - start + 1) / (planEnd - start + 1), 0, 1) : 0;
       const b = sum(c.tasks, t => t.cost);
       return b ? sum(c.tasks, t => t.cost * planPct(t, x)) / b / 100 : 0;
     }
@@ -298,14 +350,27 @@
     const contracts = (P.contracts || []).map(x => {
       const c = Object.assign({}, x);
       c.d = dn(x.date);
+      // дополнительные соглашения меняют цену договора; история сохраняется
+      c.base = +x.amount || 0;
+      c.supp = (x.supp || []).map(a => Object.assign({}, a, { d: dn(a.date), amount: +a.amount || 0 }));
+      c.amount = c.base + sum(c.supp, a => a.amount);
       c.tasks = tasks.filter(t => t.contract === c.id);
       c.frac = fracAt(c, T);
       c.done = c.amount * c.frac;
       c.adv = x.adv || 0; c.ret = x.ret == null ? 0.05 : x.ret;
       // объективное выполнение по графику закрывается ежемесячно на 25-е число
       c.ks = [];
-      let acted = 0, n = 0, prev = Math.max(c.d, start) - 1;
-      for (let m = monthStart(Math.max(c.d, start)); m <= T; m = addMonths(m, 1)) {
+      let acted = 0, n = 0, prev = Math.max(c.d, has(start) ? start : c.d) - 1;
+      // объекты с введёнными финансами: КС-2 только из внесённых данных, модель актов не строится
+      if (entered) (x.acts || []).forEach(a => {
+        n++;
+        const ad = dn(a.date), st = DSF.KS_STATUS[a.status] ? a.status : 'agreed', amt = +a.amount || 0;
+        const k = { id: 'ks-' + c.id + '-e' + n, no: a.no || ('КС-2 № ' + n), n, contract: c, period: monthStart(dn(a.period || a.date)), d: ad, obj: amt, claimed: +a.claimed || amt,
+          accepted: KR(st) >= 5 ? (a.accepted != null && a.accepted !== '' ? +a.accepted : amt) : null, amount: KR(st) >= 6 ? amt : null, status: st, lines: [], origin: 'entered', entered: true,
+          history: [{ d: ad, st, text: (DSF.KS_STATUS[st] || {}).t + (a.note ? ' — ' + a.note : ''), by: 'внесено в систему' }], note: a.note || '' };
+        c.ks.push(k); acted += k.accepted != null ? k.accepted : 0; prev = Math.max(prev, ad);
+      });
+      for (let m = monthStart(Math.max(c.d, has(start) ? start : c.d)); !entered && m <= T; m = addMonths(m, 1)) {
         const ad = m + 24;
         if (ad > T) break;
         const v = c.amount * fracAt(c, ad) - acted;
@@ -325,7 +390,7 @@
       c.lastAct = prev;
       // текущая заявка подрядчика по последнему периоду (из датасета)
       const cfg = ksCfg.get(c.id);
-      if (cfg && c.ks.length) {
+      if (cfg && c.ks.length && !entered) {
         const k = c.ks[c.ks.length - 1];
         k.origin = 'flow'; k.status = cfg.status;
         k.claimed = k.obj * (cfg.claimedK || 1);
@@ -371,8 +436,15 @@
       const advance = c.amount * c.adv;
       c.advance = advance;
       c.paidActs = paidActs;
-      c.paid = advance * (1 - paidActs / c.amount) + paidActs * (1 - c.ret);
-      c.retained = paidActs * c.ret;
+      c.payments = (c.payments || []).map(p => Object.assign({}, p, { d: dn(p.date), amount: +p.amount || 0 })).sort((a, b) => a.d - b.d);
+      if (entered) {
+        // оплачено = внесённые платежи; аванс и удержания не моделируются
+        c.paid = sum(c.payments.filter(p => p.d == null || p.d <= T), p => p.amount);
+        c.retained = 0;
+      } else {
+        c.paid = c.amount ? advance * (1 - paidActs / c.amount) + paidActs * (1 - c.ret) : 0;
+        c.retained = paidActs * c.ret;
+      }
       c.left = c.amount - c.agreed;
       c.acts = c.ks.filter(k => KR(k.status) >= 7).map(k => ({ no: k.n, date: k.d, amount: k.amount, paid: k.status === 'paid', ks: k }));
       c.state = c.frac >= 0.999 ? 'done' : c.frac > 0 ? 'active' : 'wait';
@@ -401,7 +473,7 @@
     });
     const fin$ = {
       base: sum(items, i => i.budget),
-      reserve: P.budget.reserve || 0,
+      reserve: +BUDGET.reserve || 0,
       contracted: sum(items, i => i.contracted),
       done: sum(items, i => i.done),
       acted: sum(items, i => i.acted),
@@ -418,13 +490,15 @@
     fin$.reserveUsed = fin$.eac - fin$.base;
     fin$.reserveLeft = fin$.approved - fin$.eac;
     fin$.reserveUsedPct = fin$.reserve ? fin$.reserveUsed / fin$.reserve * 100 : 0;
-    fin$.finPct = fin$.done / fin$.approved * 100;
+    fin$.finPct = fin$.approved ? fin$.done / fin$.approved * 100 : null;
+    fin$.configured = fin$.approved > 0;
+    fin$.entered = entered;
     fin$.eacDelta = fin$.eac - fin$.approved;
-    fin$.state = fin$.eac > fin$.approved ? 'crit' : fin$.reserveUsedPct > 50 ? 'warn' : 'good';
+    fin$.state = !fin$.configured ? 'neutral' : fin$.eac > fin$.approved ? 'crit' : fin$.reserveUsedPct > 50 ? 'warn' : 'good';
     // освоение по месяцам: план, факт, прогноз (млн ₽, нарастающим итогом)
     const contractPlanAt = x => sum(contracts, c => c.amount * planFracAt(c, x)) +
       sum(tasks.filter(t => !t.contract && !t.ms), t => t.cost * planPct(t, x) / 100) +
-      sum(items.filter(i => i.mode === 'linear'), i => Math.max(0, i.budget - i.contracted) * clamp((x - start + 1) / (planEnd - start + 1), 0, 1));
+      sum(items.filter(i => i.mode === 'linear'), i => hasSpan ? Math.max(0, i.budget - i.contracted) * clamp((x - start + 1) / (planEnd - start + 1), 0, 1) : 0);
     const contractFactAt = x => sum(contracts, c => c.amount * fracAt(c, x));
     const fcAt = x => {
       // прогноз: остаток договоров и незаконтрактованных работ по прогнозным окнам работ
@@ -432,34 +506,39 @@
         const c = t.contract && contractBy.get(t.contract);
         const k = c ? c.amount / Math.max(1, sum(c.tasks, z => z.cost)) : 1;
         return t.cost * k * forecastPct(t, x) / 100;
-      }) + sum(contracts.filter(c => c.tasks.length === 0), c => c.amount * clamp((x - start + 1) / (forecastEnd - start + 1), 0, 1));
+      }) + sum(contracts.filter(c => c.tasks.length === 0), c => has(start) && has(forecastEnd) ? c.amount * clamp((x - start + 1) / (forecastEnd - start + 1), 0, 1) : 0);
     };
     const money = [];
-    for (let m = c0; m <= c1; m = addMonths(m, 1)) {
+    for (let m = c0; hasSpan && m <= c1; m = addMonths(m, 1)) {
       const x = monthEnd(m);
       money.push({ t: x, plan: contractPlanAt(x), fact: x <= T ? contractFactAt(x) : null, fc: x >= T ? fcAt(x) : null });
     }
     fin$.planNow = contractPlanAt(T);
 
     /* ресурсы */
-    const R = P.resources || { weeks: [], plan: [], fact: [], equipment: [] };
+    const R = P.resources || {};
     const res = {
-      weeks: R.weeks.map(dn), plan: R.plan.slice(), fact: R.fact.slice(),
+      weeks: (R.weeks || []).map(dn), plan: (R.plan || []).slice(), fact: (R.fact || []).slice(),
       itr: (R.itr || []).slice(),
-      equipment: (R.equipment || []).slice(),
-      byContractor: (R.byContractor || []).slice()
+      equipment: (R.equipment || []).map(e => Object.assign({ cat: 'Техника' }, e)),
+      byContractor: (R.byContractor || []).slice(),
+      kinds: (R.kinds || []).slice()
     };
-    res.itrNow = res.itr.length ? res.itr[res.itr.length - 1] : null;
-    res.now = res.fact[res.fact.length - 1];
-    res.planNowWf = res.plan[res.plan.length - 1];
-    res.prev = res.fact[res.fact.length - 2];
-    res.equipTotal = sum(res.equipment, e => e.count);
+    const lastOf = a => a.length ? a[a.length - 1] : null;
+    res.has = res.weeks.length > 0;
+    res.itrNow = lastOf(res.itr);
+    res.now = lastOf(res.fact);
+    res.planNowWf = lastOf(res.plan);
+    res.prev = res.fact.length > 1 ? res.fact[res.fact.length - 2] : null;
+    res.lastWeek = lastOf(res.weeks);
+    res.equipTotal = sum(res.equipment.filter(e => e.cat !== 'Оборудование' && e.cat !== 'Прочее'), e => e.count);
 
     /* календарь: события графика (системные) + события проекта (датасет и пользователь) */
     const events = [];
     tasks.forEach(t => {
       if (t.ms) {
-        events.push({ id: 'ms-' + t.id, sys: true, type: 'milestone', kind: t.kind || 'milestone', title: t.name, date: t.af != null ? t.af : t.ef, plan: t.f0, task: t, tasks: [t], done: t.af != null, key: !!t.key });
+        events.push({ id: 'ms-' + t.id, sys: true, type: 'milestone', kind: t.kind || 'milestone', title: t.name, date: t.af != null ? t.af : t.ef, plan: t.f0, task: t, tasks: [t], done: t.af != null, key: !!t.key,
+          desc: [t.directive != null ? 'Директивный срок: ' + fmtDate(t.directive) : '', t.comment || ''].filter(Boolean).join(' · '), directive: t.directive });
         return;
       }
       events.push({ id: 's-' + t.id, sys: true, type: 'start', title: 'Начало: ' + t.name, date: t.as != null ? t.as : t.es, plan: t.s0, task: t, tasks: [t], done: t.as != null });
@@ -492,7 +571,10 @@
     });
 
     /* фото */
-    const photos = (P.photos || []).map(p => Object.assign({}, p, { d: dn(p.date), task: byId.get(p.task) || null })).sort((a, b) => b.d - a.d);
+    const photos = (P.photos || []).filter(p => !p.archived).map(p => Object.assign({}, p, { d: dn(p.date), taskId: p.task || null, task: byId.get(p.task) || null, stage: p.stage || (byId.get(p.task) || {}).stage || '' })).sort((a, b) => b.d - a.d);
+
+    /* участники: организации объекта и их роли */
+    const participants = DSF.participantsOf ? DSF.participantsOf(P, contracts) : [];
 
     /* расширения движка: документооборот, протоколы и поручения, письма */
     const ctx = { P, S, T, start, tasks, byId, stages, contracts, items, risks, events, photos, root, allKs };
@@ -515,17 +597,17 @@
     // текущий этап — тот, где сейчас сосредоточен основной объём выполняемых работ
     const vol = s => sum(s.tasks.filter(t => t.state === 'active'), t => t.cost * Math.min(t.pct, 100 - t.pct + 20));
     const act = stages.filter(s => s.state === 'active').sort((a, b) => vol(b) - vol(a));
-    const phase = P.phase || (act[0] ? act[0].name : (root.pc >= 99.5 ? 'Завершён' : 'Подготовка'));
+    const phase = P.phase || (act[0] ? act[0].name : (root.actualEnd != null || P.status === 'done' ? 'Завершён' : root.pc != null && root.pc >= 99.5 ? 'Завершён' : 'Подготовка'));
 
     /* сводные статусы */
     const highRisks = risks.filter(r => r.active && r.level === 'high');
     const midRisks = risks.filter(r => r.active && r.level === 'mid');
     const status = {
-      schedule: root.delay <= 0 ? 'good' : root.delay <= 14 ? 'warn' : 'crit',
+      schedule: root.delay == null ? 'neutral' : root.delay <= 0 ? 'good' : root.delay <= 14 ? 'warn' : 'crit',
       budget: fin$.state,
       risks: highRisks.length >= 2 ? 'crit' : highRisks.length ? 'warn' : 'good'
     };
-    const rank = { good: 0, warn: 1, crit: 2 };
+    const rank = { neutral: -1, good: 0, warn: 1, crit: 2 };
     status.overall = ['schedule', 'budget', 'risks'].map(k => status[k]).sort((a, b) => rank[b] - rank[a])[0];
 
     /* что требует внимания руководителя */
@@ -533,17 +615,19 @@
     (ctx.orders || []).filter(o => o.status !== 'done' && (o.status === 'overdue' || o.priority === 'critical'))
       .forEach(o => attention.push({ sev: o.status === 'overdue' ? 'crit' : 'warn', kind: 'order', order: o, text: o.text,
         meta: 'Поручение № ' + o.no + ' · ' + o.owner + ' · ' + (o.status === 'overdue' ? 'просрочено с ' + fmtDate(o.due) : 'срок ' + fmtDate(o.due)), due: o.due, go: 'orders.' + o.id }));
+    tasks.filter(t => t.ms && t.directive != null && t.af == null && t.ef > t.directive).forEach(t => attention.push({ sev: 'crit', text: 'Веха «' + t.name + '»: прогноз ' + fmtDate(t.ef) + ' позже директивного срока ' + fmtDate(t.directive), meta: 'отставание ' + (t.ef - t.directive) + ' дн.', go: 'schedule', task: t, due: t.directive }));
     tasks.filter(t => t.crit && t.slip > 3 && !t.ms && t.state !== 'done').slice(0, 2).forEach(t => attention.push({ sev: t.slip > 14 ? 'crit' : 'warn', text: 'Критический путь: «' + t.name + '» — прогноз +' + t.slip + ' дн. к плану', meta: 'окончание ' + fmtDate(t.ef), go: 'schedule', task: t, due: Infinity }));
-    if (fin$.eac > fin$.approved) attention.push({ sev: 'crit', text: 'Прогноз стоимости превышает утверждённый бюджет на ' + fmtMoney(fin$.eacDelta), meta: 'резерв исчерпан', go: 'budget', due: Infinity });
-    else if (fin$.reserveUsedPct > 50) attention.push({ sev: 'warn', text: 'Использовано ' + Math.round(fin$.reserveUsedPct) + '% резерва бюджета', meta: 'остаток резерва ' + fmtMoney(fin$.reserveLeft), go: 'budget', due: Infinity });
+    if (fin$.configured && fin$.eac > fin$.approved) attention.push({ sev: 'crit', text: 'Прогноз стоимости превышает утверждённый бюджет на ' + fmtMoney(fin$.eacDelta), meta: 'резерв исчерпан', go: 'budget', due: Infinity });
+    else if (fin$.configured && fin$.reserveUsedPct > 50) attention.push({ sev: 'warn', text: 'Использовано ' + Math.round(fin$.reserveUsedPct) + '% резерва бюджета', meta: 'остаток резерва ' + fmtMoney(fin$.reserveLeft), go: 'budget', due: Infinity });
     attention.sort((a, b) => ((a.kind === 'order' ? 0 : 1) - (b.kind === 'order' ? 0 : 1)) || (rank[b.sev] - rank[a.sev]) || ((a.due || 0) - (b.due || 0)));
 
     const M = {
       P, T, tasks, byId, stages, root, curve, curveT, contracts, contractBy, items, itemBy, fin: fin$, money,
       res, risks, highRisks, midRisks, events, evBy, photos, feed, today, upcoming, current, next, msList,
-      phase, status, attention, finalTask: fin, ks: allKs, ksBy: new Map(allKs.map(k => [k.id, k])), store: S
+      phase, status, attention, finalTask: fin, ks: allKs, ksBy: new Map(allKs.map(k => [k.id, k])), store: S,
+      participants, sections: DSF.sectionsOf ? DSF.sectionsOf(P) : null, readiness: RD
     };
-    ['documents', 'docBy', 'orders', 'orderBy', 'protocols', 'protocolBy', 'letters', 'letterBy', 'reports'].forEach(k => { M[k] = ctx[k]; });
+    ['documents', 'docBy', 'orders', 'orderBy', 'protocols', 'protocolBy', 'letters', 'letterBy', 'reports', 'docCats', 'docSecNames', 'docSections'].forEach(k => { M[k] = ctx[k]; });
     M.issues = DSF.validate(P, M);
     P.__model = M;
     return M;
@@ -551,6 +635,7 @@
     /* --- вспомогательные функции по работе --- */
     function planPct(t, x) {
       if (t.ms) return x >= t.f0 ? 100 : 0;
+      if (t.planOverride != null && x === T0) return t.planOverride;
       return clamp((x - t.s0 + 1) / t.dur, 0, 1) * 100;
     }
     function factPct(t, x) {
@@ -590,7 +675,7 @@
     const T = M.T;
     const E = (m) => out.push({ level: 'error', msg: m });
     const Wn = (m) => out.push({ level: 'warn', msg: m });
-    const need = ['id', 'name', 'type', 'dates', 'budget', 'tasks'];
+    const need = ['id', 'name'];
     need.forEach(k => { if (P[k] == null) E('Нет обязательного поля «' + k + '»'); });
     const ids = new Set();
     M.tasks.forEach(t => {
@@ -608,7 +693,8 @@
       if (t.pct < 0 || t.pct > 100) E(n + ': % вне диапазона');
       if (t.item && !M.itemBy.has(t.item)) E(n + ': неизвестная статья бюджета ' + t.item);
       if (t.contract && !M.contractBy.has(t.contract)) E(n + ': неизвестный договор ' + t.contract);
-      if (t.pct > 0 && !t.contract) E(n + ': работа выполняется без договора');
+      if (t.pct > 0 && !t.contract) (P.finance === 'entered' ? Wn : E)(n + ': работа выполняется без договора');
+      if (t.qty && t.qtyFact != null && t.qtyFact > t.qty) Wn(n + ': фактический объём больше общего');
       t.deps.forEach(d => {
         if (d.bad) E(n + ': не распознана связь ' + d.id);
         else if (!M.byId.has(d.id)) E(n + ': связь с несуществующей работой ' + d.id);
@@ -620,8 +706,8 @@
     });
     M.items.forEach(it => {
       if (it.mode === 'linear') return;
-      if (it.tasks.length && Math.abs(it.taskBase - it.budget) > Math.max(0.5, it.budget * 0.002)) E('Статья «' + it.name + '»: бюджет ' + it.budget + ' ≠ сумме стоимостей работ ' + it.taskBase.toFixed(1));
-      if (!it.tasks.length) Wn('Статья «' + it.name + '»: нет работ — она не попадёт в график');
+      if (it.tasks.length && it.taskBase > 0 && Math.abs(it.taskBase - it.budget) > Math.max(0.5, it.budget * 0.002)) (P.finance === 'entered' ? Wn : E)('Статья «' + it.name + '»: бюджет ' + it.budget + ' ≠ сумме стоимостей работ ' + it.taskBase.toFixed(1));
+      if (!it.tasks.length && P.finance !== 'entered') Wn('Статья «' + it.name + '»: нет работ — она не попадёт в график');
     });
     M.contracts.forEach(c => {
       if (!M.itemBy.has(c.item)) E('Договор ' + c.no + ': неизвестная статья ' + c.item);
@@ -640,7 +726,7 @@
     (P.events || []).forEach(e => { if (e.task && !M.byId.has(e.task)) E('Событие «' + e.title + '»: неизвестная работа ' + e.task); });
     M.photos.forEach(p => {
       if (p.d > T) E('Фото «' + p.caption + '» датировано будущим');
-      if (!p.task) E('Фото «' + p.caption + '»: неизвестная работа');
+      if (!p.task) { if (p.taskId) E('Фото «' + p.caption + '»: неизвестная работа ' + p.taskId); }
       else if (p.task.as == null || p.task.as > p.d) E('Фото «' + p.caption + '»: снято до начала работы «' + p.task.name + '»');
       else if (p.task.af != null && p.d > p.task.af + 21) Wn('Фото «' + p.caption + '» снято через 3+ недели после завершения работы');
     });
@@ -655,10 +741,13 @@
       });
       if (c.agreed > c.accepted + 0.01) E('Договор ' + c.no + ': согласовано КС-2 больше, чем принято');
       if (c.agreed > c.amount + 0.01) E('Договор ' + c.no + ': КС-2 больше суммы договора');
-      if (c.acted > c.done + 0.5) E('Договор ' + c.no + ': предъявлено больше выполненного по графику');
+      if (!M.fin.entered && c.acted > c.done + 0.5) E('Договор ' + c.no + ': предъявлено больше выполненного по графику');
     });
     (DSF.validators || []).forEach(v => v(P, M, E, Wn));
-    if (!M.finalTask) Wn('Не задана финальная веха (final: true) — прогноз считается по последней работе');
+    if (!M.finalTask && M.tasks.length) Wn('Не задана финальная веха (ввод объекта) — прогноз считается по последней работе');
+    if (!M.root.configured && M.tasks.some(t => !t.ms)) Wn('Правила расчёта готовности не настроены — общая готовность не рассчитывается');
+    if (M.readiness.mode === 'weight') M.stages.forEach(st => { if (M.tasks.some(t => t.stage === st.name && !t.ms) && !st.tasks.some(t => t.w > 0)) Wn('Этап «' + st.name + '» не участвует в готовности: нет весов работ' + (st.weight ? '' : ' или этапа')); });
+    M.tasks.filter(t => t.ms && t.directive != null && t.f0 != null && t.f0 > t.directive).forEach(t => Wn('Веха «' + t.name + '»: плановая дата позже директивного срока'));
     return out;
   };
 

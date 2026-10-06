@@ -14,12 +14,12 @@
   const fd = d => F.date(d);
   const fds = d => F.date(d).slice(0, 5);
   const num = (v, d = 0) => F.num(v, d);
-  const pct = (v, d = 1) => F.num(v, d) + '%';
+  const pct = (v, d = 1) => v == null || !isFinite(v) ? '—' : F.num(v, d) + '%';
   const money = v => F.money(v);
   const bn = v => F.num(v / 1000, 2);
   const plural = (n, a, b, c) => { const m = Math.abs(n) % 100, k = m % 10; return m > 10 && m < 20 ? c : k === 1 ? a : k > 1 && k < 5 ? b : c; };
   const days = n => num(n) + ' ' + plural(n, 'день', 'дня', 'дней');
-  const photoUrl = id => 'photos/' + encodeURIComponent(id) + '.jpg';
+  const photoUrl = id => DSF.imageUrl(id);
   const stVar = c => ({ good: 'var(--good)', warn: 'var(--warn)', crit: 'var(--crit)', accent: 'var(--accent)', neutral: 'var(--ink-3)' }[c] || 'var(--ink-3)');
   const chip = (t, c) => `<span class="chip ${c || 'neutral'}">${esc(t)}</span>`;
   const LS = {
@@ -61,24 +61,28 @@
     link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
     send: '<path d="M21 3L10 14"/><path d="M21 3l-7 18-4-7-7-4z"/>',
     copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
+    chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+    gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+    shield: '<path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/>',
+    user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c.8-4 4-6 8-6s7.2 2 8 6"/>',
+    eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+    eyeoff: '<path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4M6.6 6.6C3.8 8.3 2 12 2 12s3.6 7 10 7c1.6 0 3-.4 4.3-1"/>',
+    archive: '<rect x="3" y="4" width="18" height="5" rx="1.5"/><path d="M5 9v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4"/>',
+    trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13M9 7V4h6v3"/>',
+    restore: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
     zin: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4M8 11h6M11 8v6"/>', zout: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4M8 11h6"/>'
   };
   const ico = (k, sz) => `<svg viewBox="0 0 24 24" ${sz ? `width="${sz}" height="${sz}"` : ''} fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[k] || ''}</svg>`;
 
-  /* единая структура проекта: [ключ, название в меню, иконка, короткое название] */
-  const SECTIONS = [
-    ['overview', 'Обзор', 'grid', 'Обзор'],
-    ['schedule', 'Реализация / График работ', 'gantt', 'График'],
-    ['resources', 'Ресурсы', 'users', 'Ресурсы'],
-    ['calendar', 'Календарь', 'cal', 'Календарь'],
-    ['budget', 'Бюджет', 'coins', 'Бюджет'],
-    ['docs', 'Документы', 'folder', 'Документы'],
-    ['orders', 'Протокольные поручения', 'list', 'Поручения'],
-    ['risks', 'Риски', 'alert', 'Риски'],
-    ['photos', 'Фотохроника', 'cam', 'Фото']
-  ];
-  const secTitle = k => (SECTIONS.find(s => s[0] === k) || [k, k])[1];
-  const secShort = k => (SECTIONS.find(s => s[0] === k) || [k, k, '', k])[3];
+  /* единая структура разделов (config.js): [ключ, название в меню, иконка, короткое название].
+     Какие разделы видит объект — определяет его конфигурация (DSF.sectionsOf). */
+  const SECTIONS = DSF.SECTION_DEFS.map(x => [x.k, x.t, x.ic, x.s]);
+  const PAGES = { settings: ['settings', 'Настройки объекта', 'gear', 'Настройки'] };
+  const secDef = k => SECTIONS.find(s => s[0] === k) || PAGES[k] || [k, k, '', k];
+  const secTitle = k => secDef(k)[1];
+  const secShort = k => secDef(k)[3];
+  const secOn = (M, k) => k === 'overview' || k === 'settings' || !M.sections || M.sections.includes(k);
+  const can = p => DSF.can(p);
 
   const UI = {
     theme: LS.get('theme', null),
@@ -94,8 +98,9 @@
     const h = decodeURIComponent((location.hash || '').replace(/^#/, ''));
     if (!h) return { pid: null, sec: 'portfolio' };
     const [pid, sec, ...rest] = h.split('.');
+    if (pid === 'admin' || pid === 'new') return { pid: null, sec: pid, sub: [sec].concat(rest).filter(Boolean).join('.') || null };
     if (!byId(pid)) return { pid: null, sec: 'portfolio' };
-    const ok = SECTIONS.some(s => s[0] === sec);
+    const ok = SECTIONS.some(s => s[0] === sec) || !!PAGES[sec];
     return { pid, sec: ok ? sec : 'overview', sub: ok && rest.length ? rest.join('.') : null };
   }
   function go(h) {
@@ -227,47 +232,59 @@
       return '';
     };
     const item = ([k, t, ic]) => `<a class="nav-i" href="#${link(proj.id, k)}" data-go="${link(proj.id, k)}" ${r.sec === k ? 'aria-current="page"' : ''} title="${esc(t)}">${ico(ic)}<span class="nl">${t}</span>${badge(k)}</a>`;
+    const secs = proj ? SECTIONS.slice(1).filter(x => secOn(M, x[0])) : [];
+    const role = DSF.ROLES[DSF.auth.role];
     document.getElementById('sidebar').innerHTML = `
       <button class="sb-brand" type="button" data-go="" title="Портфель проектов">
         <span class="logo">${ico('building')}</span>
         <span class="sb-text"><div class="sb-name">Цифровой штаб<br>строительства</div><div class="sb-sub">Демо-версия</div></span>
       </button>
       <button class="sb-proj" type="button" data-act="switch" title="Сменить проект">
-        ${proj ? ring(34, 4, [{ v: M.root.pc, color: stVar(M.status.overall) }], `<text x="17" y="21" text-anchor="middle" font-size="9.5" font-weight="700" fill="#F2F5FA" font-family="var(--font-ui)">${Math.round(M.root.pc)}</text>`) : `<span class="logo" style="background:var(--sb-hover)">${ico('layers')}</span>`}
-        <span class="pt"><div class="pn">${proj ? esc(proj.name) : 'Все проекты'}</div><div class="pm">${proj ? esc(proj.type + ' · ' + proj.city) : DSF.projects.length + ' ' + plural(DSF.projects.length, 'проект', 'проекта', 'проектов') + ' в портфеле'}</div></span>
+        ${proj ? miniRing(M, 34, '#F2F5FA') : `<span class="logo" style="background:var(--sb-hover)">${ico('layers')}</span>`}
+        <span class="pt"><div class="pn">${proj ? esc(proj.name) : 'Все проекты'}</div><div class="pm">${proj ? esc([proj.type, proj.city].filter(Boolean).join(' · ') || 'объект') : DSF.projects.length + ' ' + plural(DSF.projects.length, 'проект', 'проекта', 'проектов') + ' в портфеле'}</div></span>
         ${ico('swap').replace('<svg', '<svg class="ch"')}
       </button>
       <nav class="sb-nav" aria-label="Разделы проекта">
-        ${proj ? item(SECTIONS[0]) + `
+        ${proj ? item(SECTIONS[0]) + (secs.length ? `
           <button class="nav-i sb-more" type="button" data-act="navtoggle" aria-expanded="${!!open}" title="Подробно">${ico('layers')}<span class="nl">Подробно</span>${ico('chevd').replace('<svg', '<svg class="chv"')}</button>
-          <div class="sb-sub-nav" ${open ? '' : 'hidden'}>${SECTIONS.slice(1).map(item).join('')}</div>`
-        : `<a class="nav-i" href="#" data-go="" aria-current="page">${ico('layers')}<span class="nl">Портфель</span></a>` + DSF.projects.map(p => `<a class="nav-i" href="#${p.id}" data-go="${p.id}">${ico('building')}<span class="nl">${esc(p.name)}</span></a>`).join('')}
+          <div class="sb-sub-nav" ${open ? '' : 'hidden'}>${secs.map(item).join('')}</div>` : '') +
+          (can('settings') ? `<a class="nav-i" href="#${link(proj.id, 'settings')}" data-go="${link(proj.id, 'settings')}" ${r.sec === 'settings' ? 'aria-current="page"' : ''} title="Настройки объекта">${ico('gear')}<span class="nl">Настройки объекта</span></a>` : '')
+        : `<a class="nav-i" href="#" data-go="" ${r.sec === 'portfolio' ? 'aria-current="page"' : ''}>${ico('layers')}<span class="nl">Портфель</span></a>` + DSF.projects.map(p => `<a class="nav-i" href="#${p.id}" data-go="${p.id}">${ico('building')}<span class="nl">${esc(p.name)}</span></a>`).join('') +
+          (can('create') ? `<a class="nav-i" href="#new" data-go="new" ${r.sec === 'new' ? 'aria-current="page"' : ''}>${ico('plus')}<span class="nl">Добавить объект</span></a>` : '') +
+          (can('admin') ? `<a class="nav-i" href="#admin" data-go="admin" ${r.sec === 'admin' ? 'aria-current="page"' : ''}>${ico('shield')}<span class="nl">Администрирование</span></a>` : '')}
       </nav>
       <div class="sb-foot">
-        <div class="sb-card"><div class="eyebrow">Отчётная дата</div><div style="font-weight:680; font-size:14px">${fd(T())}</div></div>
+        <button class="sb-card" type="button" data-act="roles" style="border:0; text-align:left; cursor:pointer; font:inherit" title="Сменить роль (демо)"><div class="eyebrow">Пользователь (демо)</div><div style="font-weight:650; font-size:13px; color:#F2F5FA">${esc(role ? role.t : '')}</div></button>
         <button class="sb-card" type="button" data-act="checks" style="border:0; text-align:left; cursor:pointer; font:inherit">
-          <div class="eyebrow">Проверка данных</div>
+          <div class="eyebrow">Проверка данных · ${fd(T())}</div>
           <div class="ok">${ico('check', 16)} ${issues ? issues + ' ' + plural(issues, 'ошибка', 'ошибки', 'ошибок') : 'Противоречий нет'}${warns ? ' · ' + warns + ' предупр.' : ''}</div>
         </button>
       </div>`;
-    const bot = r.pid ? [['overview', 'Обзор', 'grid'], ['schedule', 'График', 'gantt'], ['calendar', 'Календарь', 'cal'], ['docs', 'Документы', 'folder']] : [];
+    const bot = r.pid ? [['overview', 'Обзор', 'grid'], ['schedule', 'График', 'gantt'], ['calendar', 'Календарь', 'cal'], ['docs', 'Документы', 'folder']].filter(b => secOn(M, b[0])) : [];
     document.getElementById('botnav').innerHTML = r.pid
       ? bot.map(([k, t, ic]) => `<button type="button" data-go="${link(r.pid, k)}" ${r.sec === k ? 'aria-current="page"' : ''}>${ico(ic)}${t}</button>`).join('') + `<button type="button" data-act="more" ${!bot.some(b => b[0] === r.sec) ? 'aria-current="page"' : ''}>${ico('menu')}Ещё</button>`
-      : `<button type="button" data-go="" aria-current="page">${ico('layers')}Портфель</button>` + DSF.projects.slice(0, 4).map(p => `<button type="button" data-go="${p.id}">${ico('building')}${esc(p.name.split(' ')[0])}</button>`).join('');
+      : `<button type="button" data-go="" ${r.sec === 'portfolio' ? 'aria-current="page"' : ''}>${ico('layers')}Портфель</button>` + DSF.projects.slice(0, can('create') ? 2 : 3).map(p => `<button type="button" data-go="${p.id}">${ico('building')}${esc((p.short || p.name).split(' ')[0])}</button>`).join('') +
+        (can('create') ? `<button type="button" data-go="new" ${r.sec === 'new' ? 'aria-current="page"' : ''}>${ico('plus')}Добавить</button>` : '') + `<button type="button" data-act="more">${ico('menu')}Ещё</button>`;
+  }
+  /* кольцо готовности: «—», если готовность объекта не настроена */
+  function miniRing(M, size, fill) {
+    const v = M.root.pc;
+    return ring(size, 4, [{ v: v || 0, color: stVar(M.status.overall === 'neutral' ? 'accent' : M.status.overall) }], `<text x="${size / 2}" y="${size / 2 + 4}" text-anchor="middle" font-size="${size > 34 ? 10 : 9.5}" font-weight="700" fill="${fill}" font-family="var(--font-ui)">${v == null ? '—' : Math.round(v)}</text>`);
   }
   function topbar(r, M, v) {
     const theme = document.documentElement.getAttribute('data-theme');
     const crumbs = [{ t: 'Портфель', go: '' }];
+    if (!M && (r.sec === 'admin' || r.sec === 'new')) crumbs.push({ t: r.sec === 'admin' ? 'Администрирование' : 'Добавить объект' });
     if (M) {
       crumbs.push({ t: M.P.name, go: r.sec === 'overview' ? null : M.P.id });
       if (r.sec !== 'overview') crumbs.push({ t: secShort(r.sec), go: v && v.crumb ? link(M.P.id, r.sec) : null });
       if (v && v.crumbParent) crumbs.splice(crumbs.length, 0, { t: v.crumbParent.t, go: v.crumbParent.go });
       if (v && v.crumb) crumbs.push({ t: v.crumb });
     }
-    else crumbs[0].go = null;
+    else if (r.sec === 'portfolio') crumbs[0].go = null;
     return `<div class="topbar">
       <nav class="crumbs" aria-label="Путь">${crumbs.map((c, i) => (i ? '<span class="sep">/</span>' : '') + (c.go != null ? `<button type="button" data-go="${c.go}">${esc(c.t)}</button>` : `<span class="cur">${esc(c.t)}</span>`)).join('')}</nav>
-      ${M ? `<button class="mswitch" type="button" data-act="switch">${ring(36, 4, [{ v: M.root.pc, color: stVar(M.status.overall) }], `<text x="18" y="22" text-anchor="middle" font-size="10" font-weight="700" fill="var(--ink)" font-family="var(--font-ui)">${Math.round(M.root.pc)}</text>`)}<span class="pt"><div class="pn">${esc(M.P.name)} · ${esc(secShort(r.sec))}</div><div class="pm">${esc(M.P.type)} · сменить проект</div></span>${ico('swap')}</button>`
+      ${M ? `<button class="mswitch" type="button" data-act="switch">${miniRing(M, 36, 'var(--ink)')}<span class="pt"><div class="pn">${esc(M.P.name)} · ${esc(secShort(r.sec))}</div><div class="pm">${esc(M.P.type ? M.P.type + ' · ' : '')}сменить проект</div></span>${ico('swap')}</button>`
         : `<button class="mswitch" type="button" data-act="switch">${ico('layers')}<span class="pt"><div class="pn">Портфель проектов</div><div class="pm">Выбрать проект</div></span>${ico('swap')}</button>`}
       <div class="tb-r">
         <span class="datepill">Отчётная дата <b>${fd(T())}</b></span>
@@ -279,62 +296,72 @@
   /* ---------- портфель ---------- */
   function viewPortfolio() {
     const Ms = models();
-    const approved = sum(Ms, m => m.fin.approved), done = sum(Ms, m => m.fin.done), area = sum(Ms, m => m.P.params.area);
-    const wavg = sum(Ms, m => m.root.pc * m.fin.approved) / approved;
-    const workers = sum(Ms, m => m.res.now);
+    const head = `<section class="head" style="display:flex; flex-wrap:wrap; gap:14px 24px; align-items:flex-end">
+      <div style="flex:1 1 420px; min-width:0">
+        <div class="eyebrow">Цифровой штаб строительства · портфель</div>
+        <h1 style="margin-top:8px">Портфель <span class="ac">проектов</span></h1>
+        <p class="muted" style="margin-top:8px; max-width:70ch">Все объекты работают на одной архитектуре: экраны строятся из данных и настроек объекта. Новый объект подключается через «Добавить объект» без изменения кода.</p>
+      </div>
+      <div class="hd-r">${can('create') ? `<button class="btn primary" type="button" data-go="new">${ico('plus')}Добавить объект</button>` : ''}${can('admin') ? `<button class="btn" type="button" data-go="admin">${ico('shield')}Администрирование</button>` : ''}</div>
+    </section>`;
+    if (!Ms.length) return { html: head + `<section class="panel"><div class="pad"><div class="empty">В портфеле нет объектов.${can('create') ? ' Нажмите «Добавить объект».' : ''}</div></div></section>`, title: 'Портфель проектов' };
+    const has = v => v != null && isFinite(v);
+    const fins = Ms.filter(m => m.fin.configured);
+    const approved = sum(fins, m => m.fin.approved), done = sum(fins, m => m.fin.done), area = sum(Ms, m => +m.P.params.area || 0);
+    const rdy = Ms.filter(m => has(m.root.pc) && m.fin.configured);
+    const wavg = rdy.length ? sum(rdy, m => m.root.pc * m.fin.approved) / sum(rdy, m => m.fin.approved) : null;
+    const workers = sum(Ms, m => m.res.now || 0);
     const high = sum(Ms, m => m.highRisks.length);
     const late = Ms.filter(m => m.root.delay > 0).length;
-    const over = Ms.filter(m => m.fin.eac > m.fin.approved).length;
+    const over = Ms.filter(m => m.fin.configured && m.fin.eac > m.fin.approved).length;
     const t = T();
-    const x0 = Math.min(...Ms.map(m => m.root.start)) - 30, x1 = Math.max(...Ms.map(m => Math.max(m.root.planEnd, m.root.forecastEnd))) + 40;
+    const tl = Ms.filter(m => has(m.root.start) && has(m.root.planEnd));
+    const x0 = tl.length ? Math.min(...tl.map(m => m.root.start)) - 30 : t - 30, x1 = tl.length ? Math.max(...tl.map(m => Math.max(m.root.planEnd, has(m.root.forecastEnd) ? m.root.forecastEnd : m.root.planEnd))) + 40 : t + 30;
     const X = d => ((d - x0) / (x1 - x0) * 100).toFixed(2) + '%';
     const ticks = []; for (let y = new Date(x0 * 864e5).getUTCFullYear() + 1; ; y++) { const d = Math.round(Date.UTC(y, 0, 1) / 864e5); if (d > x1) break; ticks.push({ d, l: String(y) }); }
-    const html = `
-    <section class="head" style="display:flex; flex-wrap:wrap; gap:14px 24px; align-items:flex-end">
-      <div style="flex:1 1 420px; min-width:0">
-        <div class="eyebrow">Цифровой штаб строительства · демо-портфель</div>
-        <h1 style="margin-top:8px">Портфель <span class="ac">проектов</span></h1>
-        <p class="muted" style="margin-top:8px; max-width:70ch">Пять вымышленных объектов на разных стадиях — от котлована до ввода. Все экраны работают на одной архитектуре: меняются только данные проекта.</p>
-      </div>
-    </section>
+    const pcTxt = M => has(M.root.pc) ? Math.round(M.root.pc) + '%' : '—';
+    const delayChip = M => M.root.delay == null ? chip('нет графика', 'neutral') : M.root.delay > 0 ? chip('+' + M.root.delay + ' дн.', M.status.schedule) : chip('в срок', 'good');
+    const stName = M => { const ps = DSF.PROJECT_STATUS[M.P.status]; if (ps && M.P.status !== 'active') return [ps.t, ps.c]; const o = M.status.overall; return o === 'neutral' ? ['Настраивается', 'neutral'] : [o === 'good' ? 'В графике' : o === 'warn' ? 'Внимание' : 'Требует решений', o]; };
+    const html = head + `
     <section class="tiles" aria-label="Сводка портфеля">
-      <div class="tile"><div class="eyebrow">Бюджет портфеля</div><div class="v">${bn(approved)} <small>млрд ₽</small></div><div class="s">выполнено ${bn(done)} млрд · ${pct(done / approved * 100)}</div></div>
-      <div class="tile"><div class="eyebrow">Готовность портфеля</div><div class="v">${pct(wavg)}</div><div class="s">взвешено по бюджету</div></div>
-      <div class="tile"><div class="eyebrow">Площадь</div><div class="v">${num(area / 1000, 1)} <small>тыс. м²</small></div><div class="s">${Ms.length} ${plural(Ms.length, 'объект', 'объекта', 'объектов')}</div></div>
+      <div class="tile"><div class="eyebrow">Бюджет портфеля</div><div class="v">${approved ? bn(approved) + ' <small>млрд ₽</small>' : '—'}</div><div class="s">${approved ? 'выполнено ' + bn(done) + ' млрд · ' + pct(done / approved * 100) : 'бюджеты не заданы'}${fins.length < Ms.length && approved ? ' · без бюджета: ' + (Ms.length - fins.length) : ''}</div></div>
+      <div class="tile"><div class="eyebrow">Готовность портфеля</div><div class="v">${pct(wavg)}</div><div class="s">взвешено по бюджету${rdy.length < Ms.length ? ' · ' + rdy.length + ' из ' + Ms.length + ' объектов' : ''}</div></div>
+      <div class="tile"><div class="eyebrow">Площадь</div><div class="v">${area ? num(area / 1000, 1) + ' <small>тыс. м²</small>' : '—'}</div><div class="s">${Ms.length} ${plural(Ms.length, 'объект', 'объекта', 'объектов')}</div></div>
       <div class="tile"><div class="eyebrow">На площадках</div><div class="v">${num(workers)} <small>чел.</small></div><div class="s">техника ${num(sum(Ms, m => m.res.equipTotal))} ед.</div></div>
       <div class="tile ${late ? 'warn' : 'good'}"><div class="eyebrow">Отставание от графика</div><div class="v">${late} <small>из ${Ms.length}</small></div><div class="s">прогноз позже плана ввода</div></div>
       <div class="tile ${over ? 'crit' : 'good'}"><div class="eyebrow">Риски</div><div class="v">${high} <small>высоких</small></div><div class="s">${over ? over + ' ' + plural(over, 'проект', 'проекта', 'проектов') + ' с перерасходом' : 'перерасхода нет'}</div></div>
     </section>
     <section class="pcards" aria-label="Проекты">
       ${Ms.map(M => {
-        const P = M.P, st = M.status;
+        const P = M.P, st = M.status, sn = stName(M), img = photoUrl(P.cover);
         return `<button class="pcard" type="button" data-go="${P.id}">
-          <div class="ph"><img src="${photoUrl(P.cover)}" alt="${esc(P.name)}: ${esc(M.phase)}" loading="lazy"><div class="ov"><span class="pill-dark">${esc(P.type)}</span>${chip(st.overall === 'good' ? 'В графике' : st.overall === 'warn' ? 'Внимание' : 'Требует решений', st.overall)}</div></div>
+          <div class="ph">${img ? `<img src="${img}" alt="${esc(P.name)}: ${esc(M.phase)}" loading="lazy">` : `<div class="ph-empty">${ico('building', 40)}<span>${esc(P.code)}</span></div>`}<div class="ov">${P.type ? `<span class="pill-dark">${esc(P.type)}</span>` : '<span></span>'}${chip(sn[0], sn[1])}</div></div>
           <div class="bd">
-            <div class="row"><div style="min-width:0"><h3>${esc(P.name)}</h3><div class="meta">${esc(P.city)} · ${esc(M.phase)}</div></div>
-              ${ring(58, 6, [{ v: M.root.pc, color: 'var(--good)', tick: M.root.planNow }], `<text x="29" y="33" text-anchor="middle" font-size="13" font-weight="750" fill="var(--ink)" font-family="var(--font-ui)">${Math.round(M.root.pc)}%</text>`)}</div>
+            <div class="row"><div style="min-width:0"><h3>${esc(P.name)}</h3><div class="meta">${esc([P.city, M.phase].filter(Boolean).join(' · '))}</div></div>
+              ${ring(58, 6, [{ v: M.root.pc || 0, color: 'var(--good)', tick: M.root.planNow }], `<text x="29" y="33" text-anchor="middle" font-size="13" font-weight="750" fill="var(--ink)" font-family="var(--font-ui)">${pcTxt(M)}</text>`)}</div>
             <div class="pk">
               <div><div class="l">Ввод</div><div class="v" style="color:${M.root.delay > 0 ? stVar(st.schedule) : 'var(--ink)'}">${fd(M.root.forecastEnd)}</div></div>
-              <div><div class="l">Срок</div><div class="v" style="color:${stVar(st.schedule)}">${M.root.delay > 0 ? '+' + M.root.delay + ' дн.' : 'в срок'}</div></div>
-              <div><div class="l">Бюджет</div><div class="v" style="color:${stVar(st.budget)}">${bn(M.fin.eac)} млрд</div></div>
+              <div><div class="l">Срок</div><div class="v" style="color:${stVar(st.schedule)}">${M.root.delay == null ? '—' : M.root.delay > 0 ? '+' + M.root.delay + ' дн.' : 'в срок'}</div></div>
+              <div><div class="l">Бюджет</div><div class="v" style="color:${stVar(st.budget)}">${M.fin.configured ? bn(M.fin.eac) + ' млрд' : '—'}</div></div>
             </div>
-            <div class="row" style="font-size:12px; color:var(--ink-2)"><span>${num(M.res.now)} чел. · ${M.highRisks.length} выс. / ${M.midRisks.length} ср. рисков</span><span class="lnk">Открыть ${ico('chev')}</span></div>
+            <div class="row" style="font-size:12px; color:var(--ink-2)"><span>${M.res.has ? num(M.res.now) + ' чел.' : 'ресурсы —'} · ${M.highRisks.length} выс. / ${M.midRisks.length} ср. рисков</span><span class="lnk">Открыть ${ico('chev')}</span></div>
           </div>
         </button>`;
       }).join('')}
+      ${can('create') ? `<button class="pcard pcard-add" type="button" data-go="new"><span class="pa-ic">${ico('plus', 28)}</span><b>Добавить объект</b><span class="faint">Мастер создания: сведения, участники, разделы, график, готовность, бюджет, документация, ресурсы, показатели</span></button>` : ''}
     </section>
     <section class="panel">
       <header><h2>Сроки портфеля</h2><span class="sub">план и прогноз ввода, отчётная дата ${fd(t)}</span></header>
       <div class="pad">
         <div class="mg" style="min-width:0">
           <div class="mg-axis"><div></div><div class="tm">${ticks.map(k => `<span style="left:${X(k.d)}">${k.l}</span>`).join('')}</div></div>
-          ${Ms.map(M => `<button class="mg-row" type="button" data-go="${M.P.id}.schedule" title="${esc(M.P.name)}: план ${fd(M.root.planEnd)}, прогноз ${fd(M.root.forecastEnd)}">
-            <span class="nm"><span>${esc(M.P.name)}</span><span>${Math.round(M.root.pc)}%</span></span>
+          ${Ms.map(M => has(M.root.start) && has(M.root.planEnd) ? `<button class="mg-row" type="button" data-go="${M.P.id}.schedule" title="${esc(M.P.name)}: план ${fd(M.root.planEnd)}, прогноз ${fd(M.root.forecastEnd)}">
+            <span class="nm"><span>${esc(M.P.name)}</span><span>${pcTxt(M)}</span></span>
             <span class="tl">
-              <span class="gbar" style="left:${X(M.root.start)}; width:calc(${X(M.root.forecastEnd)} - ${X(M.root.start)})"><i style="width:${M.root.pc}%; background:${M.root.delay > 0 ? stVar(M.status.schedule) : 'var(--good)'}"></i></span>
+              <span class="gbar" style="left:${X(M.root.start)}; width:calc(${X(has(M.root.forecastEnd) ? M.root.forecastEnd : M.root.planEnd)} - ${X(M.root.start)})"><i style="width:${M.root.pc || 0}%; background:${M.root.delay > 0 ? stVar(M.status.schedule) : 'var(--good)'}"></i></span>
               <span class="gplan" style="left:${X(M.root.start)}; width:calc(${X(M.root.planEnd)} - ${X(M.root.start)})"></span>
               <span class="today" style="left:${X(t)}"></span>
-            </span></button>`).join('')}
+            </span></button>` : `<div class="mg-row" style="cursor:default"><span class="nm"><span>${esc(M.P.name)}</span><span>—</span></span><span class="tl faint" style="font-size:12px; padding-left:8px">сроки не заданы</span></div>`).join('')}
         </div>
         <div class="legend" style="margin-top:10px"><span><i style="background:var(--good)"></i>Готовность (в срок)</span><span><i style="background:var(--warn)"></i>Готовность (с отставанием)</span><span><i style="height:3px;background:var(--ink-3)"></i>Плановый срок</span><span><i style="width:2px;height:12px;background:var(--accent)"></i>Отчётная дата</span></div>
       </div>
@@ -343,80 +370,77 @@
       <header><h2>Сравнение проектов</h2><span class="sub">одинаковые показатели для любой стадии</span></header>
       <div class="pad tbl-wrap"><table class="t">
         <thead><tr><th>Проект</th><th class="l">Текущий этап</th><th>Готовность</th><th>План на дату</th><th>Прогноз ввода</th><th>Отклонение</th><th>Бюджет</th><th>Прогноз стоимости</th><th>Освоено</th><th>Риски</th></tr></thead>
-        <tbody>${Ms.map(M => `<tr class="link" data-go="${M.P.id}"><td><b>${esc(M.P.name)}</b><div class="faint" style="font-size:12px">${esc(M.P.type)}</div></td><td class="l">${esc(M.phase)}</td><td>${pct(M.root.pc)}</td><td>${pct(M.root.planNow)}</td><td>${fd(M.root.forecastEnd)}</td><td>${M.root.delay > 0 ? chip('+' + M.root.delay + ' дн.', M.status.schedule) : chip('в срок', 'good')}</td><td>${money(M.fin.approved)}</td><td style="color:${stVar(M.status.budget)}">${money(M.fin.eac)}</td><td>${pct(M.fin.finPct)}</td><td>${M.highRisks.length} / ${M.midRisks.length}</td></tr>`).join('')}</tbody>
+        <tbody>${Ms.map(M => `<tr class="link" data-go="${M.P.id}"><td><b>${esc(M.P.name)}</b><div class="faint" style="font-size:12px">${esc(M.P.type)}</div></td><td class="l">${esc(M.phase)}</td><td>${pct(M.root.pc)}</td><td>${pct(M.root.planNow)}</td><td>${fd(M.root.forecastEnd)}</td><td>${delayChip(M)}</td><td>${M.fin.configured ? money(M.fin.approved) : '—'}</td><td style="color:${stVar(M.status.budget)}">${M.fin.configured ? money(M.fin.eac) : '—'}</td><td>${pct(M.fin.finPct)}</td><td>${M.highRisks.length} / ${M.midRisks.length}</td></tr>`).join('')}</tbody>
       </table></div>
     </section>`;
     return { html, title: 'Портфель проектов' };
   }
-
   /* ---------- обзор проекта ---------- */
   function stamp(M, extra) {
-    const P = M.P;
+    const P = M.P, pp = P.params || {}, img = photoUrl(P.cover);
+    const addr = [P.address, pp.area ? num(pp.area) + ' м²' : '', pp.floors ? pp.floors + ' ' + plural(+pp.floors, 'этаж', 'этажа', 'этажей') + (pp.under ? ' + ' + pp.under + ' подз.' : '') : ''].filter(Boolean).join(' · ');
+    const ps = DSF.PROJECT_STATUS[P.status];
     return `<section class="stamp">
-      <div class="bg" style="background-image:url('${photoUrl(P.cover)}')"></div>
+      ${img ? `<div class="bg" style="background-image:url('${img}')"></div>` : ''}
       <div class="stamp-main">
         <div class="mark" aria-hidden="true">${esc(P.code)}</div>
         <div style="min-width:0">
-          <div class="eyebrow">${esc(P.type)} · ${esc(P.city)} · этап: ${esc(M.phase)}</div>
+          <div class="eyebrow">${esc([P.type, P.city, 'этап: ' + M.phase].filter(Boolean).join(' · '))}${ps && P.status !== 'active' ? ' · ' + esc(ps.t) : ''}</div>
           <h1><span class="ac">${esc(P.name)}</span></h1>
-          <div class="addr">${esc(P.address)} · ${num(P.params.area)} м² · ${P.params.floors} ${plural(P.params.floors, 'этаж', 'этажа', 'этажей')}${P.params.under ? ' + ' + P.params.under + ' подз.' : ''}</div>
+          <div class="addr">${esc(addr) || '—'}</div>
         </div>
       </div>
       <dl>${extra || ''}</dl>
     </section>`;
   }
   function viewOverview(M) {
-    const P = M.P, R = M.root, f = M.fin, t = T();
+    const P = M.P, R = M.root, f = M.fin, t = T(), RS = M.res;
     const sched = M.status.schedule;
     const attGo = a => { const [sec, ...rest] = String(a.go || 'overview').split('.'); return link(P.id, sec, rest.join('.') || null); };
+    // KPI ведёт в раздел, только если раздел включён у объекта
+    const kpi = (sec, sub, title, inner) => secOn(M, sec) ? `<button class="kpi" type="button" data-go="${link(P.id, sec, sub)}" title="${esc(title)}">${inner(true)}</button>` : `<div class="kpi kpi-static">${inner(false)}</div>`;
+    const top = (t, on) => `<div class="kpi-top"><span class="t">${t}</span>${on ? `<span class="go">${ico('arrow')}</span>` : ''}</div>`;
+    const setLink = can('settings') ? `<button class="lnk" type="button" data-go="${link(P.id, 'settings', 'readiness')}">Настроить готовность ${ico('chev')}</button>` : '';
     const html = `
-    ${stamp(M, `<div><dt>Заказчик</dt><dd style="font-size:13.5px">${esc(P.customer)}</dd></div><div><dt>Отчётная дата</dt><dd>${fd(t)}</dd></div>`)}
+    ${stamp(M, `<div><dt>Заказчик</dt><dd style="font-size:13.5px">${esc(P.customer) || '—'}</dd></div><div><dt>Отчётная дата</dt><dd>${fd(t)}</dd></div>`)}
     <section class="kpis kpis4" aria-label="Ключевые показатели">
-      <button class="kpi" type="button" data-go="${link(P.id, 'schedule')}" title="Реализация / График работ">
-        <div class="kpi-top"><span class="t">Готовность</span><span class="go">${ico('arrow')}</span></div>
-        <div class="kpi-mid"><div><div class="big">${num(R.pc, 1)}<small>%</small></div>
-          <div class="kv2"><span>План:</span><b>${fd(R.planEnd)}</b><span>Прогноз:</span><b style="color:${R.delay > 0 ? stVar(sched) : 'var(--good)'}">${fd(R.forecastEnd)}</b></div></div>
-          ${ring(84, 9, [{ v: R.pc, color: 'var(--good)', tick: R.planNow, r: 34 }])}</div>
-        <div class="kpi-foot">${chip(Math.abs(R.dev) < 0.05 ? 'по плану' : (R.dev > 0 ? '+' : '−') + num(Math.abs(R.dev), 1) + ' п.п. к плану', R.dev >= -1 ? 'good' : R.dev > -5 ? 'warn' : 'crit')}<span>план на ${fds(t)} — ${pct(R.planNow)}</span></div>
-      </button>
-      <button class="kpi" type="button" data-go="${link(P.id, 'calendar')}" title="Календарь проекта">
-        <div class="kpi-top"><span class="t">Срок</span><span class="go">${ico('arrow')}</span></div>
-        <div class="kpi-mid"><div><div class="big ${sched}">${R.delay > 0 ? '+' + R.delay + '<small>дн.</small>' : R.delay < 0 ? '−' + (-R.delay) + '<small>дн.</small>' : 'в срок'}</div><div class="s" style="margin-top:8px">${R.delay > 0 ? 'отставание прогноза от плана ввода' : R.delay < 0 ? 'опережение плана ввода' : 'прогноз совпадает с планом ввода'}</div></div>
-          ${ring(84, 9, [{ v: R.timePct, color: 'var(--accent)', r: 34 }], `<text x="42" y="46" text-anchor="middle" font-size="14" font-weight="700" fill="var(--ink)" font-family="var(--font-ui)">${Math.round(R.timePct)}%</text>`)}</div>
-        <div class="kpi-foot"><span>прошло ${Math.round(R.timePct)}% срока</span><span>осталось ${days(R.left)}</span></div>
-      </button>
-      <button class="kpi" type="button" data-go="${link(P.id, 'budget')}" title="Бюджет">
-        <div class="kpi-top"><span class="t">Бюджет</span><span class="go">${ico('arrow')}</span></div>
+      ${kpi('schedule', null, 'Реализация / График работ', on => `${top('Готовность', on)}
+        <div class="kpi-mid"><div><div class="big">${R.pc != null ? num(R.pc, 1) + '<small>%</small>' : '—'}</div>
+          <div class="kv2"><span>План:</span><b>${fd(R.planEnd)}</b><span>Прогноз:</span><b style="color:${R.delay > 0 ? stVar(sched) : R.delay == null ? 'var(--ink)' : 'var(--good)'}">${fd(R.forecastEnd)}</b></div></div>
+          ${ring(84, 9, [{ v: R.pc || 0, color: 'var(--good)', tick: R.planNow, r: 34 }])}</div>
+        <div class="kpi-foot">${R.pc == null ? `<span>${R.mode === 'manual' ? 'фактическая готовность не внесена' : 'правила расчёта готовности не настроены'}</span>` : R.dev == null ? '<span>план на дату не задан</span>' : `${chip(Math.abs(R.dev) < 0.05 ? 'по плану' : (R.dev > 0 ? '+' : '−') + num(Math.abs(R.dev), 1) + ' п.п. к плану', R.dev >= -1 ? 'good' : R.dev > -5 ? 'warn' : 'crit')}<span>план на ${fds(t)} — ${pct(R.planNow)}</span>`}</div>`)}
+      ${kpi('calendar', null, 'Календарь проекта', on => `${top('Срок', on)}
+        <div class="kpi-mid"><div><div class="big ${sched}">${R.actualEnd != null ? 'сдан' : R.delay == null ? '—' : R.delay > 0 ? '+' + R.delay + '<small>дн.</small>' : R.delay < 0 ? '−' + (-R.delay) + '<small>дн.</small>' : 'в срок'}</div><div class="s" style="margin-top:8px">${R.actualEnd != null ? 'фактическое завершение ' + fd(R.actualEnd) : R.delay == null ? 'нет плановой даты завершения или графика' : R.delay > 0 ? 'отставание прогноза от плана ввода' : R.delay < 0 ? 'опережение плана ввода' : 'прогноз совпадает с планом ввода'}</div></div>
+          ${ring(84, 9, [{ v: R.timePct || 0, color: 'var(--accent)', r: 34 }], `<text x="42" y="46" text-anchor="middle" font-size="14" font-weight="700" fill="var(--ink)" font-family="var(--font-ui)">${R.timePct != null ? Math.round(R.timePct) + '%' : '—'}</text>`)}</div>
+        <div class="kpi-foot">${R.timePct != null ? `<span>прошло ${Math.round(R.timePct)}% срока</span><span>осталось ${days(R.left)}</span>` : '<span>сроки объекта не заданы</span>'}</div>`)}
+      ${kpi('budget', null, 'Бюджет', on => f.configured ? `${top('Бюджет', on)}
         <div><div class="big bigm" style="font-size:clamp(24px,2.1vw,32px); white-space:normal">${bn(f.done)} <span class="faint">/</span> <span style="white-space:nowrap">${bn(f.approved)}<small> млрд ₽</small></span></div><div class="s" style="margin-top:8px">выполнено из утверждённого · оплачено <b>${bn(f.paid)}</b></div></div>
         <div class="bar" style="margin-top:4px"><i style="width:${clamp(f.contracted / f.approved * 100, 0, 100)}%; --c:var(--accent-soft); box-shadow:inset 0 0 0 1px var(--accent)"></i><i style="width:${clamp(f.done / f.approved * 100, 0, 100)}%; --c:var(--good)"></i><b style="left:${clamp(f.eac / f.approved * 100, 0, 100)}%" title="Прогноз стоимости"></b></div>
-        <div class="kpi-foot">${chip(f.eac > f.approved ? 'перерасход ' + money(f.eacDelta) : 'прогноз ' + bn(f.eac) + ' млрд · в бюджете', f.state)}</div>
-      </button>
-      <button class="kpi" type="button" data-go="${link(P.id, 'resources', 'wf')}" title="Ресурсы — график движения рабочей силы">
-        <div class="kpi-top"><span class="t">Ресурсы</span><span class="go">${ico('arrow')}</span></div>
+        <div class="kpi-foot">${chip(f.eac > f.approved ? 'перерасход ' + money(f.eacDelta) : 'прогноз ' + bn(f.eac) + ' млрд · в бюджете', f.state)}</div>` : `${top('Бюджет', on)}<div><div class="big">—</div><div class="s" style="margin-top:8px">бюджет объекта не задан</div></div><div class="kpi-foot"><span>${M.contracts.length ? M.contracts.length + ' ' + plural(M.contracts.length, 'договор', 'договора', 'договоров') : 'статьи и договоры не внесены'}</span></div>`)}
+      ${kpi('resources', 'wf', 'Ресурсы — график движения рабочей силы', on => `${top('Ресурсы', on)}
         <div class="res3">
-          <div><div class="l">Рабочие</div><div class="v ${M.res.now < M.res.planNowWf * 0.95 ? 'warn' : ''}">${num(M.res.now)}</div></div>
-          <div><div class="l">ИТР</div><div class="v">${M.res.itrNow != null ? num(M.res.itrNow) : '—'}</div></div>
-          <div><div class="l">Техника</div><div class="v">${num(M.res.equipTotal)}<small> ед.</small></div></div>
+          <div><div class="l">Рабочие</div><div class="v ${RS.has && RS.now < RS.planNowWf * 0.95 ? 'warn' : ''}">${RS.has ? num(RS.now) : '—'}</div></div>
+          <div><div class="l">ИТР</div><div class="v">${RS.itrNow != null ? num(RS.itrNow) : '—'}</div></div>
+          <div><div class="l">Техника</div><div class="v">${RS.equipment.length ? num(RS.equipTotal) + '<small> ед.</small>' : '—'}</div></div>
         </div>
-        <div class="kpi-foot"><span>план рабочих ${num(M.res.planNowWf)}</span><span>неделя ${fds(M.res.weeks[M.res.weeks.length - 1])}</span>${spark(M.res.fact, M.res.plan, 90, 26)}</div>
-      </button>
+        <div class="kpi-foot">${RS.has ? `<span>план рабочих ${num(RS.planNowWf)}</span><span>неделя ${fds(RS.lastWeek)}</span>${RS.fact.length > 1 ? spark(RS.fact, RS.plan, 90, 26) : ''}` : '<span>данные о ресурсах ещё не вносились</span>'}</div>`)}
     </section>
 
     <div class="grid2">
-      <section class="panel">
+      ${secOn(M, 'schedule') ? `<section class="panel">
         <header><h2>График реализации</h2><span class="sub">этапы: факт и прогноз против плана</span><span class="grow"></span><button class="lnk" type="button" data-go="${link(P.id, 'schedule')}">Диаграмма Ганта ${ico('chev')}</button></header>
-        <div class="pad">${miniGantt(M)}</div>
-      </section>
+        <div class="pad">${miniGantt(M)}${R.pc == null && M.tasks.length ? `<div class="note" style="margin-top:12px">Общая готовность не рассчитывается: для объекта не заданы правила участия работ и весовые коэффициенты. ${setLink}</div>` : ''}</div>
+      </section>` : ''}
       <section class="panel">
-        <header><h2>Требует внимания</h2><span class="sub">${M.attention.length} ${plural(M.attention.length, 'вопрос', 'вопроса', 'вопросов')}</span><span class="grow"></span><button class="lnk" type="button" data-go="${link(P.id, 'orders')}">Все поручения ${ico('chev')}</button></header>
+        <header><h2>Требует внимания</h2><span class="sub">${M.attention.length} ${plural(M.attention.length, 'вопрос', 'вопроса', 'вопросов')}</span><span class="grow"></span>${secOn(M, 'orders') ? `<button class="lnk" type="button" data-go="${link(P.id, 'orders')}">Все поручения ${ico('chev')}</button>` : ''}</header>
         <div class="pad">${M.attention.length ? `<div class="att">${M.attention.slice(0, 6).map(a => `<button class="att-i" type="button" data-go="${attGo(a)}" ${a.task ? `data-task="${a.task.id}"` : ''}><span class="sev" style="background:${stVar(a.sev)}"></span><span class="tx">${a.kind === 'order' ? `<span class="chip ${a.order.status === 'overdue' ? 'crit' : 'warn'}" style="margin-right:6px">${a.order.status === 'overdue' ? 'Просрочено' : 'Критическое'}</span>` : ''}${esc(a.text)}<div class="m">${esc(a.meta || '')}</div></span>${ico('chev')}</button>`).join('')}</div>` : '<div class="empty">Просроченных и критических поручений нет.</div>'}</div>
       </section>
     </div>
 
-    <section class="panel">
+    ${secOn(M, 'photos') ? `<section class="panel">
       <header><h2>Фотохроника</h2><span class="sub">последние снимки с объекта</span><span class="grow"></span><button class="lnk" type="button" data-go="${link(P.id, 'photos')}">Все фото ${ico('chev')}</button></header>
-      <div class="pad"><div class="photostrip">${M.photos.slice(0, 6).map(p => photoCard(M, p)).join('')}</div></div>
-    </section>`;
+      <div class="pad">${M.photos.length ? `<div class="photostrip">${M.photos.slice(0, 6).map(p => photoCard(M, p)).join('')}</div>` : `<div class="empty">Фотографий пока нет.${can('data') ? ` <button class="lnk" type="button" data-x="photo-upload">Загрузить фото</button>` : ''}</div>`}</div>
+    </section>` : ''}`;
     return { html };
   }
   const levelName = l => ({ high: 'высокий', mid: 'средний', low: 'низкий' }[l]);
@@ -446,6 +470,7 @@
   }
   function miniGantt(M) {
     const t = T();
+    if (!M.stages.length) return `<div class="empty">График объекта ещё не сформирован.${can('schedule') ? ` <button class="lnk" type="button" data-go="${link(M.P.id, 'settings', 'schedule')}">Добавить этапы и работы ${ico('chev')}</button>` : ''}</div>`;
     const x0 = Math.min(...M.stages.map(s => Math.min(s.s0, s.es))) - 15, x1 = Math.max(...M.stages.map(s => Math.max(s.f0, s.ef))) + 30;
     const X = d => ((d - x0) / (x1 - x0) * 100).toFixed(2) + '%';
     const span = x1 - x0;
@@ -469,9 +494,8 @@
     <div class="legend" style="margin-top:10px"><span><i style="background:var(--good)"></i>Завершено</span><span><i style="background:var(--accent)"></i>В графике</span><span><i style="background:var(--warn)"></i>Сдвиг до 14 дн.</span><span><i style="background:var(--crit)"></i>Сдвиг более 14 дн.</span><span><i style="height:3px;background:var(--ink-3)"></i>План</span></div>`;
   }
   function photoCard(M, p) {
-    return `<button class="ph-card" type="button" data-photo="${esc(p.file)}" data-pid="${M.P.id}"><img src="${photoUrl(p.file)}" alt="${esc(p.caption)}" loading="lazy"><span class="pc"><span class="faint num">${fd(p.d)} · ${esc(p.task ? p.task.stage : '')}</span><span class="c">${esc(p.caption)}</span></span></button>`;
+    return `<button class="ph-card" type="button" data-photo="${esc(p.file)}" data-pid="${M.P.id}"><img src="${photoUrl(p.file)}" alt="${esc(p.caption)}" loading="lazy"><span class="pc"><span class="faint num">${fd(p.d)} · ${esc(p.stage || (p.task ? p.task.stage : '') || p.cat || '')}</span><span class="c">${esc(p.caption)}</span></span></button>`;
   }
-
   /* ---------- график (Гант) ---------- */
   const CW = () => window.innerWidth < 768 ? 420 : 760, CH = () => window.innerWidth < 768 ? 280 : 300;
   const SCALES = { week: 14, month: 3, quarter: 1.2, year: 0.45 };
@@ -499,13 +523,18 @@
     const cols = gCols(), LW = sum(cols, c => c.w);
     const px = (SCALES[UI.gScale] || 3) * (window.innerWidth < 768 && UI.gScale !== 'week' ? 0.6 : 1);
     const t = T();
-    const x0 = monthStart(Math.min(...M.tasks.map(x => Math.min(x.s0, x.es))) - 10), x1 = monthEnd(Math.max(...M.tasks.map(x => Math.max(x.f0, x.ef))) + 20);
+    const editBtn = can('schedule') ? `<button class="btn" type="button" data-go="${link(P.id, 'settings', 'schedule')}">${ico('edit')}Изменить график</button>` : '';
+    const factBtn = can('data') && M.tasks.some(x => !x.ms) ? `<button class="btn primary" type="button" data-x="fact-entry">${ico('check')}Внести факт</button>` : '';
+    if (!M.tasks.length) return { html: `<section class="head" style="display:flex; flex-wrap:wrap; gap:12px 20px; align-items:flex-end"><div style="flex:1 1 360px; min-width:0"><div class="eyebrow">${esc(P.name)} · реализация</div><h1 style="margin-top:8px; font-size:clamp(24px,2.6vw,34px)">График <span class="ac">работ</span></h1></div><div class="hd-r">${editBtn}</div></section>
+      <section class="panel"><div class="pad"><div class="empty">Структура графика ещё не задана: добавьте этапы, работы и ключевые вехи в настройках объекта.</div></div></section>` };
+    const vis = M.tasks.filter(x => !x.hidden || UI.gHidden);
+    const x0 = monthStart(Math.min(...vis.concat(M.tasks).map(x => Math.min(x.s0, x.es))) - 10), x1 = monthEnd(Math.max(...vis.concat(M.tasks).map(x => Math.max(x.f0, x.ef))) + 20);
     const W = Math.round((x1 - x0 + 1) * px);
     const X = d => Math.round((d - x0) * px);
     const rows = [];
     const f = UI.gFilter;
     M.stages.forEach(s => {
-      const ts = s.tasks.filter(x => matchG(x, f));
+      const ts = s.tasks.filter(x => matchG(x, f) && (!x.hidden || UI.gHidden));
       if (!ts.length) return;
       rows.push({ stage: s });
       if (!UI.gCollapsed[P.id + s.id]) ts.forEach(x => rows.push({ task: x }));
@@ -542,7 +571,7 @@
       }
       const x = r.task;
       const L = cols.map(c => {
-        if (c.k === 'name') return cell(c, `<span style="width:22px; flex:none"></span>${x.crit ? '<span class="cp" title="Критический путь"></span>' : ''}<span class="nt" title="${esc(x.name)}">${esc(x.name)}</span>`);
+        if (c.k === 'name') return cell(c, `<span style="width:22px; flex:none"></span>${x.crit ? '<span class="cp" title="Критический путь"></span>' : ''}<span class="nt" title="${esc(x.name)}${x.qty ? ' · ' + num(x.qtyFact || 0) + ' из ' + num(x.qty) + ' ' + esc(x.unit || '') : ''}">${x.hidden ? '<span class="faint">(скрыта) </span>' : ''}${esc(x.name)}</span>`);
         if (c.k === 'ps') return cell(c, x.ms ? '' : fd(x.s0).slice(0, 6) + fd(x.s0).slice(8));
         if (c.k === 'pf') return cell(c, fd(x.f0).slice(0, 6) + fd(x.f0).slice(8));
         if (c.k === 'as') return cell(c, x.ms ? '' : x.as != null ? fd(x.as).slice(0, 6) + fd(x.as).slice(8) : '—', x.as == null ? 'color:var(--ink-3)' : '');
@@ -574,7 +603,8 @@
     const html = `
     <section class="head" style="display:flex; flex-wrap:wrap; gap:12px 20px; align-items:flex-end">
       <div style="flex:1 1 360px; min-width:0"><div class="eyebrow">${esc(M.P.name)} · реализация</div><h1 style="margin-top:8px; font-size:clamp(24px,2.6vw,34px)">График <span class="ac">работ</span></h1>
-      <div class="muted" style="margin-top:6px; font-size:13px">Готовность ${pct(M.root.pc)} при плане ${pct(M.root.planNow)} · прогноз ввода ${fd(M.root.forecastEnd)} ${M.root.delay > 0 ? chip('+' + M.root.delay + ' дн.', M.status.schedule) : chip('в срок', 'good')}</div></div>
+      <div class="muted" style="margin-top:6px; font-size:13px">Готовность ${pct(M.root.pc)} при плане ${pct(M.root.planNow)} · прогноз ввода ${fd(M.root.forecastEnd)} ${M.root.delay == null ? '' : M.root.delay > 0 ? chip('+' + M.root.delay + ' дн.', M.status.schedule) : chip('в срок', 'good')}</div></div>
+      <div class="hd-r">${factBtn}${editBtn}</div>
     </section>
     <section class="panel">
       <header><h2>Диаграмма Ганта</h2><span class="sub">${M.tasks.length} ${plural(M.tasks.length, 'позиция', 'позиции', 'позиций')} · ${M.stages.length} ${plural(M.stages.length, 'этап', 'этапа', 'этапов')}</span></header>
@@ -584,6 +614,7 @@
         <div class="seg sm" role="group" aria-label="Масштаб">${[['week', 'Неделя'], ['month', 'Месяц'], ['quarter', 'Квартал'], ['year', 'Год']].map(([k, tt]) => `<button type="button" data-gs="${k}" aria-pressed="${UI.gScale === k}">${tt}</button>`).join('')}</div>
         <button class="btn sm" type="button" data-act="gcols" title="Показать или скрыть колонки дат">${ico('layers')}${UI.gCols != null ? (UI.gCols ? 'Кратко' : 'Все колонки') : (window.innerWidth >= 1500 ? 'Кратко' : 'Все колонки')}</button>
         <button class="btn sm" type="button" data-act="gtoday">${ico('target')}Сегодня</button>
+        ${M.tasks.some(x => x.hidden) ? `<button class="btn sm" type="button" data-act="ghidden">${ico(UI.gHidden ? 'eyeoff' : 'eye')}${UI.gHidden ? 'Без скрытых' : 'Скрытые: ' + M.tasks.filter(x => x.hidden).length}</button>` : ''}
       </div>
       <div class="gt-scroll" id="gt-scroll">
         <div class="gt-inner" style="width:${LW + W}px">
@@ -602,8 +633,8 @@
     </section>
     <div class="grid2">
       <section class="panel">
-        <header><h2>Динамика готовности</h2><span class="sub">план, факт и прогноз, % по стоимости работ</span></header>
-        <div class="pad">${lineChart({
+        <header><h2>Динамика готовности</h2><span class="sub">план, факт и прогноз, % ${M.root.mode === 'cost' ? 'по стоимости работ' : M.root.mode === 'weight' ? 'по весовым коэффициентам' : 'вносится вручную'}</span></header>
+        <div class="pad">${!M.curve.length ? `<div class="empty">${M.root.mode === 'manual' ? 'Готовность вносится вручную: ' + pct(M.root.pc) + ' при плане ' + pct(M.root.planNow) + '.' : 'Кривая готовности строится после настройки правил расчёта готовности.'}</div>` : lineChart({
           w: CW(), h: CH(), x0: M.curve[0].t - 20, x1: M.curve[M.curve.length - 1].t, y0: 0, y1: 100, yTicks: [0, 25, 50, 75, 100], yFmt: v => v + '%', label: 'Кривая готовности',
           series: [
             { name: 'План', color: 'var(--ink-3)', pts: M.curve.map(c => [c.t, c.plan]), dash: '5 5', width: 2 },
@@ -616,7 +647,7 @@
       <section class="panel">
         <header><h2>Ресурсы</h2><span class="sub">численность и техника — в разделе «Ресурсы»</span></header>
         <div class="pad"><div class="res3" style="margin-bottom:12px"><div><div class="l">Рабочие</div><div class="v">${num(M.res.now)}</div></div><div><div class="l">ИТР</div><div class="v">${M.res.itrNow != null ? num(M.res.itrNow) : '—'}</div></div><div><div class="l">Техника</div><div class="v">${num(M.res.equipTotal)}<small> ед.</small></div></div></div>
-          <button class="btn sm" type="button" data-go="${link(M.P.id, 'resources', 'wf')}">${ico('users')}График движения рабочей силы</button></div>
+          ${secOn(M, 'resources') ? `<button class="btn sm" type="button" data-go="${link(M.P.id, 'resources', 'wf')}">${ico('users')}График движения рабочей силы</button>` : ''}</div>
       </section>
     </div>`;
     return { html, after: () => { const sc = document.getElementById('gt-scroll'); if (sc && UI.gScrollToday !== false) { sc.scrollLeft = Math.max(0, X(t) - (sc.clientWidth - LW) / 2); } UI.gScrollToday = true; } };
@@ -634,21 +665,25 @@
         <dt>План</dt><dd>${x.ms ? fd(x.f0) : fd(x.s0) + ' – ' + fd(x.f0)}</dd>
         ${x.ms ? `<dt>${x.af != null ? 'Факт' : 'Прогноз'}</dt><dd>${fd(x.af != null ? x.af : x.ef)}</dd>` : `<dt>Факт начало</dt><dd>${x.as != null ? fd(x.as) : '—'}</dd><dt>${x.af != null ? 'Факт окончание' : 'Прогноз окончания'}</dt><dd>${fd(x.af != null ? x.af : x.ef)}</dd><dt>План на ${fds(T())}</dt><dd>${pct(x.planNow)}</dd>`}
         <dt>Отклонение</dt><dd style="color:${x.slip > 14 ? 'var(--crit)' : x.slip > 3 ? 'var(--warn-ink)' : 'inherit'}">${x.slip > 0 ? '+' + days(x.slip) : x.slip < 0 ? '−' + days(-x.slip) : 'нет'}</dd>
+        ${x.qty ? `<dt>Объём</dt><dd>${num(x.qtyFact || 0, 1)} из ${num(x.qty, 1)} ${esc(x.unit || '')}${x.qtyPlan != null ? ' · план на дату ' + num(x.qtyPlan, 1) : ''}</dd>` : ''}
+        ${x.directive != null ? `<dt>Директивный срок</dt><dd style="color:${x.af == null && x.ef > x.directive ? 'var(--crit)' : 'inherit'}">${fd(x.directive)}</dd>` : ''}
+        ${x.comment ? `<dt>Комментарий</dt><dd>${esc(x.comment)}</dd>` : ''}
         ${x.cost ? `<dt>Стоимость</dt><dd>${money(x.cost)}</dd>` : ''}
-        ${c ? `<dt>Договор</dt><dd>${esc(c.no)} · ${esc(c.contractor)}</dd>` : !x.ms ? '<dt>Договор</dt><dd class="faint">ещё не заключён</dd>' : ''}
+        ${c ? `<dt>Договор</dt><dd>${esc(c.no)} · ${esc(c.contractor)}</dd>` : !x.ms && M.contracts.length ? '<dt>Договор</dt><dd class="faint">ещё не заключён</dd>' : ''}
         ${x.extra ? `<dt>Влияние рисков</dt><dd style="color:var(--crit)">+${x.extra} дн.</dd>` : ''}
       </dl>
       ${rs.length ? `<div><div class="eyebrow" style="margin-bottom:6px">Связанные риски</div>${rs.map(r => `<div style="font-size:12.5px; margin-bottom:4px">${chip(r.status, r.realized ? 'crit' : 'neutral')} ${esc(r.title)}${r.eff.days ? ' · +' + r.eff.days + ' дн.' : ''}</div>`).join('')}</div>` : ''}
       ${ev.length ? `<div><div class="eyebrow" style="margin-bottom:6px">События</div>${ev.map(e => `<div style="font-size:12.5px; margin-bottom:3px"><span class="num faint">${fd(e.date)}</span> · ${esc(e.title)}</div>`).join('')}</div>` : ''}
       ${docsOfTask(M, x)}
       ${ph.length ? `<div class="thumbs">${ph.slice(0, 2).map(p => photoCard(M, p)).join('')}</div>` : ''}
+      ${(can('data') && !x.ms) || can('schedule') ? `<div class="fchips">${can('data') && !x.ms ? `<button class="btn sm primary" type="button" data-x="fact-entry" data-id="${x.id}">${ico('check')}Внести факт</button>` : ''}${can('schedule') ? `<button class="btn sm" type="button" data-x="task-edit" data-id="${x.id}">${ico('edit')}Изменить работу</button>` : ''}</div>` : ''}
     </div>`;
   }
   function docsOfTask(M, x) {
-    const ds = (M.documents || []).filter(d => d.taskIds.includes(x.id));
+    const ds = (M.documents || []).filter(d => d.taskIds.includes(x.id) && (M.docCats || DSF.DOC_CATS)[d.cat]);
     const c = x.contract ? M.contractBy.get(x.contract) : null;
     const grp = cat => ds.filter(d => d.cat === cat);
-    const row = d => `<button class="qlink" type="button" data-go="${link(M.P.id, 'docs', d.id)}"><b>${esc(DSF.DOC_CATS[d.cat].t)}</b> ${esc(d.code)} <span class="faint">· ${esc(d.cur ? 'ред. ' + d.cur.rev + ' · ' : '')}${esc(DSF.docStatusLabel(d, d.state))}${d.prod ? ' · в производстве ред. ' + esc(d.prod.rev) : ''}</span></button>`;
+    const row = d => `<button class="qlink" type="button" data-go="${link(M.P.id, 'docs', d.id)}"><b>${esc((M.docCats || DSF.DOC_CATS)[d.cat].t)}</b> ${esc(d.code)} <span class="faint">· ${esc(d.cur ? 'ред. ' + d.cur.rev + ' · ' : '')}${esc(DSF.docStatusLabel(d, d.state))}${d.prod ? ' · в производстве ред. ' + esc(d.prod.rev) : ''}</span></button>`;
     const ks = c ? c.ks.slice(-2).reverse() : [];
     if (!ds.length && !ks.length) return '';
     return `<div><div class="eyebrow" style="margin-bottom:6px">Документы по работе</div>
@@ -660,32 +695,37 @@
   /* ---------- фото ---------- */
   function viewPhotos(M) {
     const P = M.P;
-    const stages = [...new Set(M.photos.map(p => p.task.stage))];
-    const list = M.photos.filter(p => UI.photoStage === 'all' || p.task.stage === UI.photoStage);
+    const stOf = p => p.stage || (p.task ? p.task.stage : '') || '';
+    const stages = [...new Set(M.photos.map(stOf).filter(Boolean))];
+    const cats = [...new Set(M.photos.map(p => p.cat).filter(Boolean))];
+    const sel = UI.photoStage;
+    const list = M.photos.filter(p => sel === 'all' || stOf(p) === sel || p.cat === sel);
     const groups = [];
     list.forEach(p => { const k = iso(p.d).slice(0, 7); let g = groups.find(x => x.k === k); if (!g) groups.push(g = { k, d: p.d, items: [] }); g.items.push(p); });
+    const ds = M.photos.some(p => !String(p.file).startsWith('u:'));
     const html = `
     <section class="head" style="display:flex; flex-wrap:wrap; gap:12px 20px; align-items:flex-end">
       <div style="flex:1 1 360px; min-width:0"><div class="eyebrow">${esc(P.name)} · фотохроника</div><h1 style="margin-top:8px; font-size:clamp(24px,2.6vw,34px)">Фото <span class="ac">со стройки</span></h1>
-      <div class="muted" style="margin-top:6px; font-size:13px">${M.photos.length} ${plural(M.photos.length, 'снимок', 'снимка', 'снимков')} · каждое фото привязано к работе графика и дате съёмки</div></div>
+      <div class="muted" style="margin-top:6px; font-size:13px">${M.photos.length} ${plural(M.photos.length, 'снимок', 'снимка', 'снимков')} · фото привязаны к дате съёмки, этапу и работе графика</div></div>
+      <div class="hd-r">${can('data') ? `<button class="btn primary" type="button" data-x="photo-upload">${ico('upload')}Загрузить фото</button>` : ''}</div>
     </section>
-    <div class="fchips" role="group" aria-label="Этапы">${[['all', 'Все этапы', M.photos.length]].concat(stages.map(s => [s, s, M.photos.filter(p => p.task.stage === s).length])).map(([k, tt, n]) => `<button class="fchip" type="button" data-ps="${esc(k)}" aria-pressed="${UI.photoStage === k}">${esc(tt)} <b>${n}</b></button>`).join('')}</div>
-    <section class="panel"><header><h2>Хроника</h2><span class="sub">от новых к старым</span></header><div class="pad"><div class="pgrid">${groups.map(g => { const d = new Date(g.d * 864e5); return `<div class="eyebrow" style="grid-column:1/-1; margin-top:6px">${F.MONTHS_FULL[d.getUTCMonth()]} ${d.getUTCFullYear()} · ${g.items.length} ${plural(g.items.length, 'снимок', 'снимка', 'снимков')}</div>` + g.items.map(p => photoCard(M, p)).join(''); }).join('')}</div></div></section>
-    <p class="credit">Фотографии — Unsplash (лицензия Unsplash), авторы указаны в просмотре. Подписи и привязка к работам вымышлены.</p>`;
+    ${M.photos.length ? `<div class="fchips" role="group" aria-label="Этапы и категории">${[['all', 'Все', M.photos.length]].concat(stages.map(s => [s, s, M.photos.filter(p => stOf(p) === s).length])).concat(cats.filter(c => !stages.includes(c)).map(c => [c, c, M.photos.filter(p => p.cat === c).length])).map(([k, tt, n]) => `<button class="fchip" type="button" data-ps="${esc(k)}" aria-pressed="${sel === k}">${esc(tt)} <b>${n}</b></button>`).join('')}</div>
+    <section class="panel"><header><h2>Хроника</h2><span class="sub">от новых к старым</span></header><div class="pad"><div class="pgrid">${groups.map(g => { const d = new Date(g.d * 864e5); return `<div class="eyebrow" style="grid-column:1/-1; margin-top:6px">${F.MONTHS_FULL[d.getUTCMonth()]} ${d.getUTCFullYear()} · ${g.items.length} ${plural(g.items.length, 'снимок', 'снимка', 'снимков')}</div>` + g.items.map(p => photoCard(M, p)).join(''); }).join('') || '<div class="empty">Нет фото с таким фильтром.</div>'}</div></div></section>`
+      : `<section class="panel"><div class="pad"><div class="empty">Фотографий пока нет.</div></div></section>`}
+    ${ds ? '<p class="credit">Фотографии датасетов — Unsplash (лицензия Unsplash), авторы указаны в просмотре. Подписи и привязка к работам вымышлены.</p>' : ''}`;
     return { html };
   }
   function viewer(M, file) {
     const list = M.photos, i = list.findIndex(p => p.file === file);
     if (i < 0) return '';
-    const p = list[i];
+    const p = list[i], up = String(p.file).startsWith('u:');
     return `<div class="viewer" role="dialog" aria-label="Просмотр фото">
-      <div class="vt"><div style="min-width:0"><div style="font-weight:680">${esc(p.caption)}</div><div style="font-size:12.5px; color:#A4B1C5">${fd(p.d)} · ${esc(M.P.name)}</div></div><button class="x" type="button" data-act="v-close" aria-label="Закрыть">${ico('x')}</button></div>
+      <div class="vt"><div style="min-width:0"><div style="font-weight:680">${esc(p.caption)}</div><div style="font-size:12.5px; color:#A4B1C5">${fd(p.d)} · ${esc(M.P.name)}</div></div>${up && can('data') ? `<button class="x" type="button" data-x="photo-edit" data-file="${esc(p.file)}" aria-label="Изменить">${ico('edit')}</button>` : ''}<button class="x" type="button" data-act="v-close" aria-label="Закрыть">${ico('x')}</button></div>
       <div class="vi"><img src="${photoUrl(p.file)}" alt="${esc(p.caption)}">
         ${list.length > 1 ? `<button class="nav" type="button" data-vnav="${list[(i - 1 + list.length) % list.length].file}" style="left:12px" aria-label="Предыдущее">${ico('left')}</button><button class="nav" type="button" data-vnav="${list[(i + 1) % list.length].file}" style="right:12px" aria-label="Следующее">${ico('right')}</button>` : ''}</div>
-      <div class="vc"><span>Этап: <b>${esc(p.task.stage)}</b></span><span>Работа: <b>${esc(p.task.name)}</b> · ${Math.round(p.task.pct)}% сейчас</span><span>${i + 1} из ${list.length}</span><span>Фото: ${esc(p.author)} / Unsplash</span></div>
+      <div class="vc">${p.stage || p.task ? `<span>Этап: <b>${esc(p.stage || p.task.stage)}</b></span>` : ''}${p.task ? `<span>Работа: <b>${esc(p.task.name)}</b> · ${Math.round(p.task.pct)}% сейчас</span>` : ''}${p.cat ? `<span>Категория: <b>${esc(p.cat)}</b></span>` : ''}${p.desc ? `<span>${esc(p.desc)}</span>` : ''}<span>${i + 1} из ${list.length}</span><span>Фото: ${esc(p.author || '—')}${up ? '' : ' / Unsplash'}</span></div>
     </div>`;
   }
-
   /* ---------- риски ---------- */
   function viewRisks(M) {
     const P = M.P;
@@ -700,6 +740,7 @@
     <section class="head" style="display:flex; flex-wrap:wrap; gap:12px 20px; align-items:flex-end">
       <div style="flex:1 1 360px; min-width:0"><div class="eyebrow">${esc(P.name)} · управление рисками</div><h1 style="margin-top:8px; font-size:clamp(24px,2.6vw,34px)">Риски <span class="ac">и решения</span></h1>
       <div class="muted" style="margin-top:6px; font-size:13px">Реализующиеся риски автоматически сдвигают работы графика и добавляются в прогноз стоимости.</div></div>
+      <div class="hd-r">${can('data') ? `<button class="btn primary" type="button" data-x="risk-new">${ico('plus')}Риск или проблема</button>` : ''}</div>
     </section>
     <section class="tiles">
       <div class="tile ${M.highRisks.length ? 'crit' : 'good'}"><div class="eyebrow">Высокие</div><div class="v">${M.highRisks.length}</div><div class="s">оценка 15–25</div></div>
@@ -729,10 +770,13 @@
     <section class="panel">
       <header><h2>Реестр рисков</h2><span class="grow"></span><div class="seg sm" role="group" aria-label="Статус">${[['active', 'Активные'], ['realized', 'Реализуются'], ['closed', 'Закрытые'], ['all', 'Все']].map(([k, tt]) => `<button type="button" data-rf="${k}" aria-pressed="${flt === k}">${tt}</button>`).join('')}</div></header>
       <div class="pad"><div class="rcards">${list.length ? list.map(r => `<article class="rcard"><span class="sv" style="background:${stVar(levelColor(r.level))}"></span><div>
-        <div class="rh"><h3>${esc(r.title)}</h3>${chip(r.status, r.realized ? 'crit' : r.active ? 'neutral' : 'good')}${chip('P' + r.p + ' × I' + r.i + ' = ' + r.score, levelColor(r.level))}</div>
-        <div class="rm"><span>Категория: <b>${esc(r.cat)}</b></span><span>Ответственный: <b>${esc(r.owner)}</b></span><span>Контроль: <b>${fd(dn(r.control))}</b></span></div>
+        <div class="rh"><h3>${esc(r.title)}</h3>${r.kind === 'issue' ? chip('Проблемный вопрос', 'warn') : ''}${chip(r.status, r.realized ? 'crit' : r.active ? 'neutral' : 'good')}${chip('P' + r.p + ' × I' + r.i + ' = ' + r.score + ' · ' + levelName(r.level), levelColor(r.level))}${can('data') ? `<button class="mini" type="button" data-x="risk-edit" data-id="${esc(r.id)}" aria-label="Изменить" title="Изменить">${ico('edit', 15)}</button>` : ''}</div>
+        ${r.desc ? `<p class="muted" style="margin:6px 0 0; font-size:13px">${esc(r.desc)}</p>` : ''}
+        <div class="rm">${r.cat ? `<span>Категория: <b>${esc(r.cat)}</b></span>` : ''}<span>Ответственный: <b>${esc(r.owner || '—')}</b></span><span>Контроль: <b>${fd(dn(r.control))}</b></span>${r.due ? `<span>Срок: <b style="color:${dn(r.due) < T() && r.active ? 'var(--crit)' : 'inherit'}">${fd(dn(r.due))}</b></span>` : ''}</div>
         <div class="eff">${r.eff.task && r.task ? `<button class="chip ${r.realized ? 'crit' : 'neutral'}" style="border:0; cursor:pointer" type="button" data-go="${link(P.id, 'schedule')}" data-task="${r.task.id}">${r.eff.days ? (r.realized ? 'Сдвигает' : 'Может сдвинуть') + ' «' + esc(r.task.name) + '» на ' + r.eff.days + ' дн.' : '«' + esc(r.task.name) + '»'}</button>` : ''}${r.realized && r.projectDays ? chip('Ввод объекта: +' + r.projectDays + ' дн.', 'crit') : ''}${r.eff.cost ? chip((r.realized ? 'В прогнозе стоимости: +' : 'Потенциально: +') + money(r.eff.cost), r.realized ? 'warn' : 'neutral') : ''}</div>
         ${r.measures && r.measures.length ? `<ul>${r.measures.map(m => `<li>${esc(m)}</li>`).join('')}</ul>` : ''}
+        ${(r.docs || []).length || (r.photos || []).length ? `<div class="qlinks" style="margin-top:8px">${(r.docs || []).map(id => { const d = M.docBy && M.docBy.get(id); return d ? `<button class="qlink" type="button" data-go="${link(P.id, 'docs', d.id)}"><b>${esc(((M.docCats || DSF.DOC_CATS)[d.cat] || {}).t || 'Док.')}</b> ${esc(d.code || d.title)}</button>` : ''; }).join('')}${(r.photos || []).map(f => { const ph = M.photos.find(x => x.file === f); return ph ? `<button class="qlink" type="button" data-photo="${esc(f)}" data-pid="${P.id}"><b>Фото</b> ${esc(ph.caption)} · ${fd(ph.d)}</button>` : ''; }).join('')}</div>` : ''}
+        ${(r.comments || []).length ? `<div class="feed" style="margin-top:8px">${r.comments.map(c => feedRow(dn(c.date), 'var(--ink-3)', esc(c.text), c.by || '')).join('')}</div>` : ''}
       </div></article>`).join('') : '<div class="empty">Рисков с таким фильтром нет.</div>'}</div></div>
     </section>`;
     return { html };
@@ -741,21 +785,36 @@
   /* ---------- слои: выбор проекта, проверка данных, меню ---------- */
   function projectSheet(cur) {
     return `<div class="sheet-bg" data-act="sheet-close"><div class="psheet" role="dialog" aria-label="Выбор проекта">
-      <div class="ph"><div class="eyebrow">Проекты демо-портфеля</div></div>
+      <div class="ph"><div class="eyebrow">Проекты портфеля</div></div>
       <button class="popt" type="button" data-go="" ${!cur ? 'aria-current="true"' : ''}><span class="logo" style="width:46px;height:46px;border-radius:14px">${ico('layers')}</span><span><div class="pn">Портфель</div><div class="pm">сводка по всем проектам</div></span><span></span></button>
-      ${models().map(M => `<button class="popt" type="button" data-go="${link(M.P.id, cur && UI.lastSec ? UI.lastSec : 'overview')}" ${cur === M.P.id ? 'aria-current="true"' : ''}>
-        ${ring(46, 5, [{ v: M.root.pc, color: 'var(--good)', tick: M.root.planNow }], `<text x="23" y="27" text-anchor="middle" font-size="11" font-weight="750" fill="var(--ink)" font-family="var(--font-ui)">${Math.round(M.root.pc)}</text>`)}
-        <span style="min-width:0"><div class="pn">${esc(M.P.name)}</div><div class="pm">${esc(M.P.type)} · ${esc(M.phase)}</div></span>
-        ${chip(M.root.delay > 0 ? '+' + M.root.delay + ' дн.' : 'в срок', M.status.schedule)}
+      ${models().map(M => `<button class="popt" type="button" data-go="${link(M.P.id, cur && UI.lastSec && secOn(M, UI.lastSec) ? UI.lastSec : 'overview')}" ${cur === M.P.id ? 'aria-current="true"' : ''}>
+        ${ring(46, 5, [{ v: M.root.pc || 0, color: 'var(--good)', tick: M.root.planNow }], `<text x="23" y="27" text-anchor="middle" font-size="11" font-weight="750" fill="var(--ink)" font-family="var(--font-ui)">${M.root.pc == null ? '—' : Math.round(M.root.pc)}</text>`)}
+        <span style="min-width:0"><div class="pn">${esc(M.P.name)}</div><div class="pm">${esc([M.P.type, M.phase].filter(Boolean).join(' · '))}</div></span>
+        ${M.root.delay == null ? chip('—', 'neutral') : chip(M.root.delay > 0 ? '+' + M.root.delay + ' дн.' : 'в срок', M.status.schedule)}
       </button>`).join('')}
+      ${can('create') ? `<button class="popt" type="button" data-go="new"><span class="logo" style="width:46px;height:46px;border-radius:14px; background:var(--accent)">${ico('plus')}</span><span><div class="pn">Добавить объект</div><div class="pm">мастер создания и настройки</div></span><span></span></button>` : ''}
       ${cur ? `<div class="ph" style="padding-top:12px"><div class="eyebrow">Раздел сохранится при переключении</div></div>` : ''}
     </div></div>`;
   }
   function moreSheet(pid) {
+    const M = pid ? DSF.build(byId(pid)) : null;
+    const opt = (go, ic, t, act) => `<button class="popt" type="button" ${act ? `data-act="${act}"` : `data-go="${go}"`} style="grid-template-columns:32px 1fr auto">${ico(ic, 22)}<span class="pn">${t}</span><span></span></button>`;
     return `<div class="sheet-bg" data-act="sheet-close"><div class="psheet" role="dialog" aria-label="Разделы">
-      <div class="ph"><div class="eyebrow">Разделы проекта</div></div>
-      ${SECTIONS.map(([k, t, ic]) => `<button class="popt" type="button" data-go="${link(pid, k)}" style="grid-template-columns:32px 1fr auto">${ico(ic, 22)}<span class="pn">${t}</span><span></span></button>`).join('')}
-      <button class="popt" type="button" data-go="" style="grid-template-columns:32px 1fr auto">${ico('layers', 22)}<span class="pn">Портфель</span><span></span></button>
+      ${M ? `<div class="ph"><div class="eyebrow">Разделы проекта</div></div>
+      ${SECTIONS.filter(x => secOn(M, x[0])).map(([k, t, ic]) => opt(link(pid, k), ic, t)).join('')}
+      ${can('settings') ? opt(link(pid, 'settings'), 'gear', 'Настройки объекта') : ''}` : ''}
+      <div class="ph" style="padding-top:8px"><div class="eyebrow">Система</div></div>
+      ${opt('', 'layers', 'Портфель')}
+      ${can('create') ? opt('new', 'plus', 'Добавить объект') : ''}
+      ${can('admin') ? opt('admin', 'shield', 'Администрирование') : ''}
+      ${opt('', 'user', 'Роль: ' + esc(DSF.ROLES[DSF.auth.role].t), 'roles')}
+      ${opt('', 'check', 'Проверка данных', 'checks')}
+    </div></div>`;
+  }
+  function rolesSheet() {
+    return `<div class="sheet-bg" data-act="sheet-close"><div class="psheet" role="dialog" aria-label="Роль пользователя" style="width:min(460px,calc(100vw - 24px))">
+      <div class="ph"><div class="eyebrow">Роль пользователя (демо)</div><p class="muted" style="margin-top:6px; font-size:12.5px">В демо-версии нет входа в систему: роль выбирается здесь и определяет доступные действия. В промышленной версии роль приходит из учётной записи.</p></div>
+      ${Object.entries(DSF.ROLES).map(([k, r]) => `<button class="popt" type="button" data-x="set-role" data-role="${k}" ${DSF.auth.role === k ? 'aria-current="true"' : ''} style="grid-template-columns:32px 1fr auto">${ico(k === 'admin' ? 'shield' : 'user', 22)}<span><div class="pn">${esc(r.t)}</div><div class="pm">${r.perms.map(p => DSF.PERMS[p]).join(' · ')}</div></span><span>${DSF.auth.role === k ? ico('check', 18) : ''}</span></button>`).join('')}
     </div></div>`;
   }
   function checksSheet() {
@@ -775,12 +834,21 @@
     if (r.pid && r.sec !== 'overview' && UI.lastKey !== r.pid + r.sec) UI.navOpen = true;
     UI.lastKey = r.pid ? r.pid + r.sec : '';
     sidebar(r);
-    if (!M) v = viewPortfolio();
+    if (!M) v = (r.sec !== 'portfolio' && VIEWS[r.sec] ? VIEWS[r.sec] : viewPortfolio)(null, r);
+    else if (!secOn(M, r.sec)) v = { html: `<section class="panel" style="margin-top:12px"><div class="pad"><div class="empty">Раздел «${esc(secTitle(r.sec))}» отключён для этого объекта.${can('settings') ? ` <button class="lnk" type="button" data-go="${link(M.P.id, 'settings', 'sections')}">Настроить разделы ${ico('chev')}</button>` : ''}</div></div></section>` };
     else v = (VIEWS[r.sec] || VIEWS.overview)(M, r);
     document.getElementById('app').innerHTML = topbar(r, M, v) + v.html;
-    document.title = (M ? M.P.name + ' · ' + (v.crumb || secShort(r.sec)) + ' — ' : '') + 'Цифровой штаб строительства';
+    document.title = (M ? M.P.name + ' · ' + (v.crumb || secShort(r.sec)) + ' — ' : (v.title ? v.title + ' — ' : '')) + 'Цифровой штаб строительства';
+    guard(document.getElementById('app')); guard(document.getElementById('sidebar'));
     renderLayer();
     if (v.after) v.after();
+  }
+  /* права: элементы действий, недоступных роли, не показываются; обработчики проверяют права повторно */
+  const PERM_X = {}, PERM_F = {};
+  function guard(rootEl) {
+    if (!rootEl) return;
+    rootEl.querySelectorAll('[data-x]').forEach(el => { const p = PERM_X[el.dataset.x]; if (p && !can(p)) el.remove(); });
+    rootEl.querySelectorAll('[data-perm]').forEach(el => { if (!can(el.dataset.perm)) el.remove(); });
   }
   function renderLayer() {
     const r = route(), M = r.pid ? DSF.build(byId(r.pid)) : null;
@@ -788,11 +856,14 @@
     if (UI.sheet === 'switch') h = projectSheet(r.pid);
     else if (UI.sheet === 'more' && r.pid) h = moreSheet(r.pid);
     else if (UI.sheet === 'checks') h = checksSheet();
+    else if (UI.sheet === 'roles') h = rolesSheet();
+    else if (UI.sheet === 'more') h = moreSheet(null);
     if (M && UI.sel && r.sec === 'schedule' && M.byId.get(UI.sel)) h += quickCard(M, M.byId.get(UI.sel));
     if (UI.viewer) { const pm = DSF.build(byId(UI.viewer.pid)); h += viewer(pm, UI.viewer.file); }
-    if (UI.modal && M) { try { h += modalFrame(UI.modal.render(M, r), UI.modal.wide); } catch (err) { console.error(err); UI.modal = null; } }
+    if (UI.modal && (M || UI.modal.global)) { try { h += modalFrame(UI.modal.render(M, r), UI.modal.wide); } catch (err) { console.error(err); UI.modal = null; } }
     if (UI.toast) h += `<div class="toast" role="status">${UI.toast.html}</div>`;
     document.getElementById('layer').innerHTML = h;
+    guard(document.getElementById('layer'));
     if (UI.modal && UI.modal.focus) { const el = document.querySelector('.modal [autofocus]'); if (el) el.focus(); UI.modal.focus = false; }
   }
 
@@ -807,6 +878,7 @@
   document.addEventListener('submit', e => {
     const f = e.target.closest('form[data-form]'); if (!f) return;
     e.preventDefault();
+    const p = PERM_F[f.dataset.form]; if (p && !can(p)) { toast('Недостаточно прав для этого действия.'); return; }
     const fn = FORMS[f.dataset.form]; if (fn) fn(f, route());
   });
   document.addEventListener('click', e => {
@@ -815,13 +887,14 @@
     const r = route();
     const d = el.dataset;
     if (d.act === 'modal-close') { if (e.target === el) closeModal(); return; }
-    if (d.x) { e.preventDefault(); const fn = ACTIONS[d.x]; if (fn) fn(el, d, r); return; }
+    if (d.x) { e.preventDefault(); const p = PERM_X[d.x]; if (p && !can(p)) { toast('Недостаточно прав для этого действия.'); return; } const fn = ACTIONS[d.x]; if (fn) fn(el, d, r); return; }
     if (d.act === 'sheet-close') { if (e.target === el) { UI.sheet = null; renderLayer(); } return; }
     if (d.photo) { UI.viewer = { pid: d.pid, file: d.photo }; renderLayer(); return; }
     if (d.vnav) { UI.viewer.file = d.vnav; renderLayer(); return; }
     if (d.act) {
       e.preventDefault();
-      if (d.act === 'switch' || d.act === 'more' || d.act === 'checks') { UI.sheet = d.act; renderLayer(); return; }
+      if (d.act === 'switch' || d.act === 'more' || d.act === 'checks' || d.act === 'roles') { UI.sheet = d.act; renderLayer(); return; }
+      if (d.act === 'ghidden') { UI.gHidden = !UI.gHidden; keepScroll(); return; }
       if (d.act === 'theme') {
         const cur = document.documentElement.getAttribute('data-theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
         const nx = cur === 'light' ? 'dark' : 'light';
@@ -876,20 +949,26 @@
   /* ---------- загрузка датасетов по манифесту ---------- */
   function boot() {
     const need = (DSF.manifest || []).filter(id => !byId(id));
-    if (!need.length) { order(); render(); return; }
+    // файлы (IndexedDB) и реестр объектов подключаются до первой отрисовки
+    const start = () => { const go2 = () => { if (DSF.registry) DSF.registry.apply(); order(); render(); }; if (DSF.files) DSF.files.init().then(go2, go2); else go2(); };
+    if (!need.length) { start(); return; }
     let left = need.length;
     need.forEach(id => {
       const s = document.createElement('script');
       s.src = 'data/projects/' + id + '.js'; s.charset = 'utf-8';
-      s.onload = s.onerror = () => { if (--left === 0) { order(); render(); } };
+      s.onload = s.onerror = () => { if (--left === 0) start(); };
       document.head.appendChild(s);
     });
   }
-  function order() { const m = DSF.manifest || []; DSF.projects.sort((a, b) => m.indexOf(a.id) - m.indexOf(b.id)); }
+  function order() {
+    const m = DSF.manifest || [], o = DSF.registry && DSF.registry.state ? DSF.registry.state.order : [];
+    const rank = id => { const i = m.indexOf(id); if (i >= 0) return i; const j = o.indexOf(id); return 1000 + (j >= 0 ? j : 999); };
+    DSF.projects.sort((a, b) => rank(a.id) - rank(b.id));
+  }
   const VIEWS = { overview: viewOverview, schedule: viewSchedule, photos: viewPhotos, risks: viewRisks };
   const ACTIONS = {}, FORMS = {}, INPUTS = {};
   DSF.ui = {
-    render, renderLayer, boot, UI, VIEWS, ACTIONS, FORMS, INPUTS, SECTIONS,
-    h: { esc, fd, fds, num, pct, money, bn, plural, days, chip, ico, ring, lineChart, wfBars, spark, stVar, link, go, route, byId, photoCard, feedRow, evColor, budgetStack, stamp, LS, T, CW, CH, keepPage, openModal, closeModal, toast, focusTask, secTitle, secShort, models }
+    render, renderLayer, boot, order, UI, VIEWS, ACTIONS, FORMS, INPUTS, SECTIONS, PERM_X, PERM_F, guard,
+    h: { secOn, miniRing, can, photoUrl, riskEffectText, levelName, levelColor, quickCard, esc, fd, fds, num, pct, money, bn, plural, days, chip, ico, ring, lineChart, wfBars, spark, stVar, link, go, route, byId, photoCard, feedRow, evColor, budgetStack, stamp, LS, T, CW, CH, keepPage, openModal, closeModal, toast, focusTask, secTitle, secShort, models }
   };
 })();

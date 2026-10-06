@@ -30,6 +30,10 @@
   const empty = t => `<div class="empty">${esc(t)}</div>`;
   const tile = (l, v, s, c) => `<div class="tile ${c || ''}"><div class="eyebrow">${l}</div><div class="v">${v}</div>${s ? `<div class="s">${s}</div>` : ''}</div>`;
   const mln = v => num(v, v < 100 ? 1 : 0);
+  const CATS = M => M.docCats || DSF.DOC_CATS;
+  const SECN = M => M.docSecNames || DSF.DOC_SECTIONS;
+  const can = p => DSF.can(p);
+  const secOn = (M, k) => H.secOn(M, k);
 
   /* ссылка на любой объект системы по id — единый способ связывать разделы */
   function objLink(M, id, label) {
@@ -37,7 +41,7 @@
     if (!R) return `<span class="faint">${esc(id)}</span>`;
     const o = R.obj;
     switch (R.kind) {
-      case 'doc': return `<button class="qlink" type="button" data-go="${link(P.id, 'docs', o.id)}"><b>${esc(DSF.DOC_CATS[o.cat].t)}</b> ${esc(label || o.code || o.title)}<span class="faint"> · ${esc(DSF.docStatusLabel(o, o.state))}</span></button>`;
+      case 'doc': return `<button class="qlink" type="button" data-go="${link(P.id, 'docs', o.id)}"><b>${esc(CATS(M)[o.cat].t)}</b> ${esc(label || o.code || o.title)}<span class="faint"> · ${esc(DSF.docStatusLabel(o, o.state))}</span></button>`;
       case 'ks': return `<button class="qlink" type="button" data-go="${link(P.id, 'budget', o.id)}"><b>КС</b> ${esc(label || o.contract.no + ' · ' + o.no)}<span class="faint"> · ${esc(ksSt(o).t)}</span></button>`;
       case 'order': return `<button class="qlink" type="button" data-go="${link(P.id, 'orders', o.id)}"><b>Поручение</b> № ${esc(o.no)}<span class="faint"> · ${esc(ordSt(o).t)} · ${esc(label || o.text)}</span></button>`;
       case 'protocol': return `<button class="qlink" type="button" data-go="${link(P.id, 'docs', o.id)}"><b>Протокол</b> № ${esc(o.no)} от ${fd(o.d)}</button>`;
@@ -56,6 +60,9 @@
    * ==================================================================== */
   U.VIEWS.resources = function (M, r) {
     const P = M.P, R = M.res, tab = ['wf', 'contr', 'equip'].includes(r.sub) ? r.sub : 'wf';
+    const entryBtn = `${can('settings') ? `<button class="btn" type="button" data-go="${link(P.id, 'settings', 'resources')}">${ico('gear')}Виды ресурсов</button>` : ''}<button class="btn primary" type="button" data-x="res-entry">${ico('plus')}Внести данные</button>`;
+    if (!R.has) return { html: `${head(esc(P.name) + ' · ресурсы', 'Ресурсы', 'на площадке', 'Данные о численности и технике ещё не вносились.', entryBtn)}
+      <section class="panel"><div class="pad"><div class="empty">Внесите данные за неделю: план и факт рабочих, ИТР, рабочих по подрядчикам, технику и оборудование по видам${R.kinds.length ? ' (' + R.kinds.map(k => esc(k.name)).join(', ') + ')' : ''}.</div></div></section>` };
     const n = R.weeks.length, delta = R.now - R.planNowWf;
     const tabs = [['wf', 'График движения рабочей силы'], ['contr', 'По подрядчикам'], ['equip', 'Техника']];
     let body = '';
@@ -65,19 +72,20 @@
           <div class="tbl-wrap" style="margin-top:14px"><table class="t"><thead><tr><th>Неделя</th><th>План, чел.</th><th>Факт, чел.</th><th>Отклонение</th><th>ИТР</th><th>Всего на площадке</th></tr></thead>
           <tbody>${R.weeks.map((w, i) => i).reverse().map(i => { const d = R.fact[i] - R.plan[i]; return `<tr><td>${fd(R.weeks[i])}</td><td>${num(R.plan[i])}</td><td><b>${num(R.fact[i])}</b></td><td class="${d < 0 ? 'pos' : 'neg'}">${d > 0 ? '+' : d < 0 ? '−' : ''}${num(Math.abs(d))}</td><td>${R.itr[i] != null ? num(R.itr[i]) : '—'}</td><td>${num(R.fact[i] + (R.itr[i] || 0))}</td></tr>`; }).join('')}</tbody></table></div></div></section>`;
     } else if (tab === 'contr') {
-      const tot = sum(R.byContractor, c => c.n);
+      const tot = sum(R.byContractor, c => c.n) || 1;
       body = `<section class="panel"><header><h2>Рабочие по подрядчикам</h2><span class="sub">неделя ${fd(R.weeks[n - 1])}</span></header>
         <div class="pad"><div class="list">${R.byContractor.map(c => `<div class="li"><span class="t">${esc(c.name)}</span><span class="num"><b>${num(c.n)}</b> чел.</span><span class="m"><span class="minib"><span class="bar"><i style="width:${(c.n / tot * 100).toFixed(1)}%"></i></span><b>${Math.round(c.n / tot * 100)}%</b></span></span></div>`).join('')}</div>
         <div class="note" style="margin-top:12px">Итого ${num(tot)} чел. — совпадает с фактом недели (${num(R.now)}).</div></div></section>`;
     } else {
-      body = `<section class="panel"><header><h2>Техника на площадке</h2><span class="sub">${num(R.equipTotal)} ед.</span></header>
-        <div class="pad"><div class="list">${R.equipment.map(e => `<div class="li"><span class="t">${esc(e.name)}</span><span class="num"><b>${num(e.count)}</b> ед.</span></div>`).join('')}</div></div></section>`;
+      const cats = [...new Set(R.equipment.map(e => e.cat || 'Техника'))];
+      body = cats.map(c => { const list = R.equipment.filter(e => (e.cat || 'Техника') === c); return `<section class="panel"><header><h2>${esc(c)}</h2><span class="sub">${num(sum(list, e => e.count))} ${esc((list[0] || {}).unit || 'ед.')}</span></header>
+        <div class="pad"><div class="list">${list.map(e => `<div class="li"><span class="t">${esc(e.name)}</span><span class="num"><b>${num(e.count)}</b> ${esc(e.unit || 'ед.')}</span></div>`).join('')}</div></div></section>`; }).join('') || `<section class="panel"><div class="pad">${empty('Техника и оборудование не вносились.')}</div></section>`;
     }
-    const html = `${head(esc(P.name) + ' · ресурсы', 'Ресурсы', 'на площадке', 'Неделя ' + fd(R.weeks[n - 1]) + ' · данные суточных рапортов подрядчиков')}
+    const html = `${head(esc(P.name) + ' · ресурсы', 'Ресурсы', 'на площадке', 'Неделя ' + fd(R.weeks[n - 1]) + ' · данные суточных рапортов подрядчиков', entryBtn)}
       <section class="tiles">
         ${tile('Рабочие', num(R.now) + ' <small>чел.</small>', 'план ' + num(R.planNowWf), R.now < R.planNowWf * 0.95 ? 'warn' : '')}
         ${tile('ИТР', R.itrNow != null ? num(R.itrNow) + ' <small>чел.</small>' : '—', 'инженерно-технический персонал')}
-        ${tile('Техника', num(R.equipTotal) + ' <small>ед.</small>', R.equipment.length + ' видов')}
+        ${tile('Техника', num(R.equipTotal) + ' <small>ед.</small>', R.equipment.length + ' ' + plural(R.equipment.length, 'вид', 'вида', 'видов') + ' ресурсов')}
         ${tile('Отклонение от плана', (delta > 0 ? '+' : delta < 0 ? '−' : '') + num(Math.abs(delta)) + ' <small>чел.</small>', 'за неделю ' + (R.now >= R.prev ? '+' : '−') + Math.abs(R.now - R.prev), delta < -R.planNowWf * 0.05 ? 'crit' : delta < 0 ? 'warn' : 'good')}
       </section>
       <div class="seg" role="tablist" aria-label="Ресурсы">${tabs.map(([k, t]) => `<button type="button" role="tab" data-go="${link(P.id, 'resources', k)}" aria-pressed="${tab === k}">${t}</button>`).join('')}</div>
@@ -193,7 +201,7 @@
         <div class="fld"><label for="ev-people">Участники</label><textarea id="ev-people" name="people" placeholder="По одному на строку: организация или ФИО">${esc((d.people || []).join('\n'))}</textarea></div>
         <div class="fld"><label for="ev-desc">Описание / повестка</label><textarea id="ev-desc" name="desc">${esc(d.desc || '')}</textarea></div>
         <div class="row-f"><div class="fld"><label for="ev-tasks">Связанные работы</label><select id="ev-tasks" name="tasks" multiple size="6">${M.tasks.filter(x => !x.ms).map(x => opt(x.id, x.name, (d.tasks || []).includes(x.id))).join('')}</select><span class="hint">Ctrl/⌘ — выбрать несколько</span></div>
-          <div class="fld"><label for="ev-docs">Связанные документы</label><select id="ev-docs" name="docs" multiple size="6">${docs.map(x => opt(x.id, DSF.DOC_CATS[x.cat].t + ' · ' + x.code + ' · ' + x.title, (d.docs || []).includes(x.id))).join('')}</select></div></div>
+          <div class="fld"><label for="ev-docs">Связанные документы</label><select id="ev-docs" name="docs" multiple size="6">${docs.map(x => opt(x.id, CATS(M)[x.cat].t + ' · ' + x.code + ' · ' + x.title, (d.docs || []).includes(x.id))).join('')}</select></div></div>
         <div class="fld"><label for="ev-order">Протокольное поручение</label><select id="ev-order" name="order">${opt('', '— не связано —', !d.order)}${M.orders.map(o => opt(o.id, '№ ' + o.no + ' · ' + o.text, d.order === o.id)).join('')}</select></div>
         ${d.ks ? `<div class="note">Событие будет связано с ${esc(M.ksBy.get(d.ks).contract.no)} · ${esc(M.ksBy.get(d.ks).no)}; заявка перейдёт в статус «Направлено на приёмку».</div>` : ''}
         <div class="err" id="ev-err" hidden></div>
@@ -362,7 +370,7 @@
           <div class="fld"><label for="or-due">Срок</label><input id="or-due" name="due" type="date" required value="${esc(d.due || iso(T() + 7))}"></div></div>
         <div class="row-f"><div class="fld"><label for="or-pr">Приоритет</label><select id="or-pr" name="priority">${Object.keys(DSF.ORDER_PRIORITY).map(k => opt(k, DSF.ORDER_PRIORITY[k].t, (d.priority || 'normal') === k)).join('')}</select></div>
           <div class="fld"><label for="or-tasks">Связанные работы</label><select id="or-tasks" name="tasks" multiple size="4">${M.tasks.filter(x => !x.ms).map(x => opt(x.id, x.name, (d.tasks || []).includes(x.id))).join('')}</select></div></div>
-        <div class="fld"><label for="or-docs">Связанные документы</label><select id="or-docs" name="docs" multiple size="4">${M.documents.map(x => opt(x.id, DSF.DOC_CATS[x.cat].t + ' · ' + x.code + ' · ' + x.title, (d.docs || []).includes(x.id))).join('')}</select></div>
+        <div class="fld"><label for="or-docs">Связанные документы</label><select id="or-docs" name="docs" multiple size="4">${M.documents.map(x => opt(x.id, CATS(M)[x.cat].t + ' · ' + x.code + ' · ' + x.title, (d.docs || []).includes(x.id))).join('')}</select></div>
         <div class="fld"><label for="or-comment">Комментарий</label><input id="or-comment" name="comment" value=""></div>
       </div>
       <div class="mf"><button class="btn primary" type="submit">${ico('check')}Создать поручение</button><button class="btn" type="button" data-act="x-close">Отмена</button></div></form>`;
@@ -404,7 +412,9 @@
   /* ====================================================================
    * ДОКУМЕНТЫ
    * ==================================================================== */
-  const CAT_ORDER = ['rd', 'pd', 'id', 'ks', 'reports', 'letters', 'protocols', 'permits', 'contracts'];
+  const CAT_BASE = ['rd', 'pd', 'id', 'ks', 'reports', 'letters', 'protocols', 'permits', 'contracts'];
+  const catOrder = M => CAT_BASE.concat(Object.keys(CATS(M)).filter(k => !CAT_BASE.includes(k)));
+  const UPLOAD_CATS = M => ['rd', 'pd', 'id', 'reports', 'permits'].concat(Object.keys(CATS(M)).filter(k => CATS(M)[k].custom));
   function catCount(M, c) {
     if (c === 'ks') return M.ks.length;
     if (c === 'letters') return M.letters.length;
@@ -433,16 +443,16 @@
   }
   U.VIEWS.docs = function (M, r) {
     const P = M.P;
-    if (r.sub && !DSF.DOC_CATS[r.sub]) {
+    if (r.sub && !CATS(M)[r.sub]) {
       const R = DSF.resolve(M, r.sub);
       if (R && R.kind === 'doc') return docCard(M, R.obj);
       if (R && R.kind === 'protocol') return protocolCard(M, R.obj);
       if (R && R.kind === 'letter') return letterCard(M, R.obj);
     }
-    const cat = DSF.DOC_CATS[r.sub] ? r.sub : (UI.docCat || 'rd');
+    const cat = CATS(M)[r.sub] ? r.sub : (CATS(M)[UI.docCat] ? UI.docCat : 'rd');
     UI.docCat = cat;
     let body = '';
-    if (cat === 'rd' || cat === 'pd') body = viewRdPd(M, cat);
+    if (cat === 'rd' || cat === 'pd' || CATS(M)[cat].custom) body = viewRdPd(M, cat);
     else if (cat === 'id') body = viewId(M);
     else if (cat === 'ks') body = viewKsList(M);
     else if (cat === 'letters') body = viewLetters(M);
@@ -450,20 +460,23 @@
     else if (cat === 'contracts') body = viewContractsDoc(M);
     else body = viewSimple(M, cat);
     const html = `${head(esc(P.name) + ' · документооборот', 'Документы', 'проекта', 'Каждый документ — объект системы: раздел, шифр, редакции со статусами и историей, связи с работами, событиями, поручениями и КС-2.',
-      `<button class="btn primary" type="button" data-x="doc-upload" data-cat="${['rd', 'pd', 'id', 'reports', 'permits'].includes(cat) ? cat : 'rd'}">${ico('upload')}Загрузить документ</button>`)}
-      <div class="seg doc-tabs" role="tablist" aria-label="Категории">${CAT_ORDER.map(c => `<button type="button" role="tab" data-go="${link(P.id, 'docs', c)}" aria-pressed="${cat === c}" title="${esc(DSF.DOC_CATS[c].full)}">${DSF.DOC_CATS[c].t} <b>${catCount(M, c)}</b></button>`).join('')}</div>
+      `${can('settings') ? `<button class="btn" type="button" data-go="${link(P.id, 'settings', 'docs')}">${ico('gear')}Структура</button>` : ''}<button class="btn primary" type="button" data-x="doc-upload" data-cat="${UPLOAD_CATS(M).includes(cat) ? cat : 'rd'}">${ico('upload')}Загрузить документ</button>`)}
+      <div class="seg doc-tabs" role="tablist" aria-label="Категории">${catOrder(M).map(c => `<button type="button" role="tab" data-go="${link(P.id, 'docs', c)}" aria-pressed="${cat === c}" title="${esc(CATS(M)[c].full)}">${CATS(M)[c].t} <b>${catCount(M, c)}</b></button>`).join('')}</div>
       ${body}`;
-    return { html, crumb: DSF.DOC_CATS[cat].full };
+    return { html, crumb: CATS(M)[cat].full };
   };
   function viewRdPd(M, cat) {
     const P = M.P, docs = M.documents.filter(d => d.cat === cat);
-    const secs = [...new Set(docs.map(d => d.section))];
+    // разделы: настроенные для объекта (в т. ч. пустые) и встречающиеся в документах
+    const cfgSecs = (M.docSections || []).filter(x => x.cat === cat);
+    const secs = [...new Set(cfgSecs.map(x => x.code).concat(docs.map(d => d.section)).filter(x => x != null))];
+    const parentOf = code => (cfgSecs.find(x => x.code === code) || {}).parent || '';
     const sel = (UI.docSection || {})[P.id + cat] || 'all';
     const all = secStats(docs);
     const cards = secs.map(sc => {
-      const st = secStats(docs.filter(d => d.section === sc)), w = v => (v / st.plan * 100).toFixed(1) + '%';
+      const st = secStats(docs.filter(d => d.section === sc)), w = v => st.plan ? (v / st.plan * 100).toFixed(1) + '%' : '0%';
       return `<button class="sec-card" type="button" data-x="doc-sec" data-cat="${cat}" data-sec="${esc(sc)}" aria-pressed="${sel === sc}">
-        <span class="sec-h"><b>${esc(sc)}</b><span>${esc(DSF.DOC_SECTIONS[sc] || sc)}</span></span>
+        <span class="sec-h"><b>${esc(sc || 'Без раздела')}</b><span>${esc(SECN(M)[sc] || sc)}${parentOf(sc) ? ' · подраздел ' + esc(parentOf(sc)) : ''}</span></span>
         <span class="stack" style="height:8px"><i style="width:${w(cat === 'rd' ? st.prod : st.actual)}; background:var(--good)"></i><i style="width:${w(cat === 'rd' ? Math.max(0, st.actual - st.prod) : 0)}; background:var(--accent)"></i><i style="width:${w(st.rev)}; background:var(--accent-2)"></i><i style="width:${w(st.up + st.ret)}; background:var(--warn)"></i></span>
         <span class="sec-n"><span>Предусмотрено <b>${st.plan}</b></span><span>Загружено <b>${st.loaded}</b></span>${st.none ? `<span class="w">Нет <b>${st.none}</b></span>` : ''}${st.rev ? `<span>На проверке <b>${st.rev}</b></span>` : ''}<span>Актуально <b>${st.actual}</b></span>${cat === 'rd' ? `<span>Передано <b>${st.prod}</b></span>` : ''}${st.sup ? `<span class="faint">Заменено ред. <b>${st.sup}</b></span>` : ''}${st.ret ? `<span class="w">С замечаниями <b>${st.ret}</b></span>` : ''}</span>
       </button>`;
@@ -476,12 +489,12 @@
         ${tile('Актуально', num(all.actual), 'согласованные редакции', 'good')}
         ${cat === 'rd' ? tile('Передано в производство', num(all.prod), 'заменено редакций ' + all.sup, 'good') : tile('Заменено редакций', num(all.sup), 'хранятся в истории')}
       </section>
-      <section class="panel"><header><h2>Разделы ${cat === 'rd' ? 'рабочей' : 'проектной'} документации</h2><span class="sub">нажмите раздел, чтобы отфильтровать реестр</span>${sel !== 'all' ? `<span class="grow"></span><button class="lnk" type="button" data-x="doc-sec" data-cat="${cat}" data-sec="all">Все разделы</button>` : ''}</header>
-        <div class="pad"><div class="sec-grid">${cards}</div>
+      <section class="panel"><header><h2>${cat === 'rd' ? 'Разделы рабочей документации' : cat === 'pd' ? 'Разделы проектной документации' : 'Разделы: ' + esc(CATS(M)[cat].full)}</h2><span class="sub">нажмите раздел, чтобы отфильтровать реестр</span>${sel !== 'all' ? `<span class="grow"></span><button class="lnk" type="button" data-x="doc-sec" data-cat="${cat}" data-sec="all">Все разделы</button>` : ''}</header>
+        <div class="pad">${secs.length ? `<div class="sec-grid">${cards}</div>` : `<div class="empty">Разделы не заданы.${can('settings') ? ` <button class="lnk" type="button" data-go="${link(P.id, 'settings', 'docs')}">Создать структуру документации ${ico('chev')}</button>` : ''}</div>`}
         <div class="legend" style="margin-top:12px">${cat === 'rd' ? '<span><i style="background:var(--good)"></i>Передано в производство</span><span><i style="background:var(--accent)"></i>Согласовано</span>' : '<span><i style="background:var(--good)"></i>Согласовано</span>'}<span><i style="background:var(--accent-2)"></i>На проверке</span><span><i style="background:var(--warn)"></i>Загружено / замечания</span><span><i style="background:var(--surface-2)"></i>Не загружено</span></div></div></section>
-      <section class="panel"><header><h2>Реестр ${cat === 'rd' ? 'РД' : 'ПД'}${sel !== 'all' ? ' · ' + esc(sel) : ''}</h2><span class="sub">${list.length} ${plural(list.length, 'документ', 'документа', 'документов')}</span></header>
+      <section class="panel"><header><h2>Реестр: ${esc(CATS(M)[cat].t)}${sel !== 'all' ? ' · ' + esc(sel) : ''}</h2><span class="sub">${list.length} ${plural(list.length, 'документ', 'документа', 'документов')}</span></header>
         <div class="pad tbl-wrap"><table class="t"><thead><tr><th>Шифр</th><th class="l">Наименование</th><th class="l">Раздел</th><th>Ред.</th><th>Статус</th><th>${cat === 'rd' ? 'В производстве' : ''}</th><th>Дата</th><th class="l">Работы</th></tr></thead>
-        <tbody>${list.map(d => docRow(M, d)).join('')}</tbody></table></div></section>`;
+        <tbody>${list.map(d => docRow(M, d)).join('') || `<tr><td colspan="8" class="l">${empty('Документов пока нет.')}</td></tr>`}</tbody></table></div></section>`;
   }
   function viewId(M) {
     const P = M.P, docs = M.documents.filter(d => d.cat === 'id');
@@ -536,7 +549,7 @@
   }
   function viewSimple(M, cat) {
     const docs = M.documents.filter(d => d.cat === cat).sort((a, b) => (b.d || 0) - (a.d || 0));
-    return `<section class="panel"><header><h2>${esc(DSF.DOC_CATS[cat].full)}</h2><span class="sub">${docs.length} ${plural(docs.length, 'документ', 'документа', 'документов')}</span></header>
+    return `<section class="panel"><header><h2>${esc(CATS(M)[cat].full)}</h2><span class="sub">${docs.length} ${plural(docs.length, 'документ', 'документа', 'документов')}</span></header>
       <div class="pad tbl-wrap"><table class="t"><thead><tr><th>Номер / шифр</th><th class="l">Наименование</th><th class="l">Организация</th><th>Дата</th><th>Срок</th><th>Статус</th></tr></thead>
       <tbody>${docs.map(d => `<tr class="link" data-go="${link(M.P.id, 'docs', d.id)}"><td><b>${esc(d.code)}</b></td><td class="l w">${esc(d.title)}</td><td class="l w" style="min-width:160px">${esc(d.issuer || d.org || '')}</td><td>${d.d != null ? fd(d.d) : '—'}</td><td style="${d.due != null && d.due < T() && d.state !== 'ok' ? 'color:var(--crit)' : ''}">${d.due != null ? fd(d.due) : ''}</td><td>${chip(DSF.docStatusLabel(d, d.state), docSt(d).c)}</td></tr>`).join('')}</tbody></table></div></section>`;
   }
@@ -544,12 +557,12 @@
   /* карточка документа: редакции, движение, связи */
   function docCard(M, d) {
     const P = M.P, cur = d.cur, acts = cur ? (DSF.DOC_ACTIONS[cur.status] || []) : [];
-    const cat = DSF.DOC_CATS[d.cat];
+    const cat = CATS(M)[d.cat];
     const contracts = [...new Set(d.tasks.map(t => t.contract).filter(Boolean))].map(id => M.contractBy.get(id)).filter(Boolean);
     const ks = d.cat === 'id' ? contracts.flatMap(c => c.ks.filter(k => k.lines && k.lines.some(l => d.taskIds.includes(l.task.id)) && cur && k.d >= cur.d - 40)).slice(-3) : [];
     const html = `<div class="topback">${backBtn(link(P.id, 'docs', d.cat), cat.full)}</div>
       <section class="panel">
-        <header><div style="min-width:0; flex:1"><div class="eyebrow">${esc(cat.full)} · ${esc(d.section)} ${esc(DSF.DOC_SECTIONS[d.section] || '')}</div><h2 style="margin-top:6px">${esc(d.code)} — ${esc(d.title)}</h2>
+        <header><div style="min-width:0; flex:1"><div class="eyebrow">${esc(cat.full)} · ${esc(d.section)} ${esc(SECN(M)[d.section] || '')}</div><h2 style="margin-top:6px">${esc(d.code)} — ${esc(d.title)}</h2>
           <div class="muted" style="margin-top:4px; font-size:12.5px">${esc(d.org || d.issuer || '')}${d.due != null ? ' · контрольный срок ' + fd(d.due) : ''}${d.user ? ' · создан в системе' : ''}</div></div>
           <div class="fchips">${chip(DSF.docStatusLabel(d, d.state), docSt(d).c)}</div></header>
         <div class="pad">
@@ -570,7 +583,7 @@
           <div class="pad">${d.versions.length ? d.versions.slice().reverse().map(v => `<div class="ver ${v === cur ? 'cur' : ''}">
             <div class="ver-h"><b>Ред. ${esc(v.rev)}</b><span class="faint">${fd(v.d)}</span>${chip(DSF.docStatusLabel(d, v.shown), (DSF.DOC_STATUS[v.shown] || {}).c)}${v === cur ? chip('актуальная', 'accent') : ''}${v.sent != null ? `<span class="prodmark">${ico('check', 13)} в производстве с ${fd(v.sent)}</span>` : ''}</div>
             ${v.to ? `<div class="faint" style="font-size:12px">Передано: ${esc(v.to)}</div>` : ''}
-            ${v.file ? `<div style="font-size:12.5px; margin-top:4px">Файл: ${store.file(v.file.id) && store.file(v.file.id).url ? `<a href="${store.file(v.file.id).url}" target="_blank" rel="noopener">${esc(v.file.name)}</a>` : esc(v.file.name) + ' <span class="faint">(демо: файл доступен только в сеансе загрузки)</span>'} · ${num(v.file.size / 1024)} КБ</div>` : ''}
+            ${v.file ? `<div style="font-size:12.5px; margin-top:4px">Файл: ${store.file(v.file.id) ? `<button class="lnk" type="button" data-x="file-save" data-fid="${esc(v.file.id)}" data-name="${esc(v.file.name)}">${ico('upload', 13)}${esc(v.file.name)}</button>` : esc(v.file.name) + ' <span class="faint">(файл недоступен в этом браузере)</span>'} · ${num(v.file.size / 1024)} КБ</div>` : ''}
             ${v.note ? `<div style="font-size:12.5px; margin-top:4px">${esc(v.note)}</div>` : ''}
             <ul class="vh">${v.history.map(h => `<li><span class="num">${fd(h.d)}</span> ${esc(h.text)}${h.by ? ' <span class="faint">· ' + esc(h.by) + '</span>' : ''}</li>`).join('')}</ul></div>`).join('') : empty('Редакций нет — документ ожидается.')}</div></section>
         <section class="panel"><header><h2>Связи</h2></header><div class="pad">
@@ -612,15 +625,15 @@
   function uploadForm(M) {
     const d = UI.upDraft, opt = (v, t, sel) => `<option value="${esc(v)}" ${sel ? 'selected' : ''}>${esc(t)}</option>`;
     const ex = d.docId ? M.docBy.get(d.docId) : null;
-    const cats = ['rd', 'pd', 'id', 'reports', 'permits'];
+    const cats = UPLOAD_CATS(M);
     const secs = secOptions(d.cat, M);
     const nextRev = ex ? nextRevOf(ex) : (d.cat === 'rd' ? '0' : '1');
     return `<form data-form="upload" class="mform"><div class="mh"><div><div class="eyebrow">${ex ? 'Новая редакция документа' : 'Загрузка документа'}</div><h3 style="margin-top:4px">${ex ? esc(ex.code + ' — ' + ex.title) : 'Новый документ'}</h3></div><button class="icon-btn" type="button" data-act="x-close" aria-label="Закрыть">${ico('x')}</button></div>
       <div class="mb">
         <div class="note">Демо-режим: сведения о документе и его движении сохраняются в браузере, сам файл — только в текущей вкладке. В рабочей версии файл передаётся в хранилище через тот же интерфейс хранения.</div>
         <div class="fld"><label for="up-file">Файл</label><input id="up-file" name="file" type="file" required></div>
-        <div class="row-f"><div class="fld"><label for="up-cat">Категория</label><select id="up-cat" name="cat" ${ex ? 'disabled' : ''}>${cats.map(c => opt(c, DSF.DOC_CATS[c].t + ' — ' + DSF.DOC_CATS[c].full, d.cat === c)).join('')}</select></div>
-          <div class="fld"><label for="up-sec">Раздел</label><select id="up-sec" name="section" ${ex ? 'disabled' : ''}>${secs.map(s => opt(s, s + ' — ' + (DSF.DOC_SECTIONS[s] || s), (ex ? ex.section : d.section) === s)).join('')}</select></div></div>
+        <div class="row-f"><div class="fld"><label for="up-cat">Категория</label><select id="up-cat" name="cat" ${ex ? 'disabled' : ''}>${cats.map(c => opt(c, CATS(M)[c].t + ' — ' + CATS(M)[c].full, d.cat === c)).join('')}</select></div>
+          <div class="fld"><label for="up-sec">Раздел</label><select id="up-sec" name="section" ${ex ? 'disabled' : ''}>${secs.map(s => opt(s, s + ' — ' + (SECN(M)[s] || s), (ex ? ex.section : d.section) === s)).join('')}</select></div></div>
         <div class="row-f"><div class="fld"><label for="up-code">Шифр</label><input id="up-code" name="code" required value="${esc(ex ? ex.code : d.code || '')}" ${ex ? 'readonly' : ''} placeholder="Например: ${esc(M.P.code)}-КЖ-05"></div>
           <div class="fld"><label for="up-rev">Версия / редакция</label><input id="up-rev" name="rev" required value="${esc(d.rev || nextRev)}"></div></div>
         <div class="fld"><label for="up-title">Название</label><input id="up-title" name="title" required value="${esc(ex ? ex.title : d.title || '')}" ${ex ? 'readonly' : ''}></div>
@@ -635,7 +648,8 @@
   function secOptions(cat, M) {
     const base = { rd: ['ГП', 'АР', 'КР', 'ОВ', 'ВК', 'ЭОМ', 'СС', 'АПТ', 'ТХ', 'НС', 'ЛФТ'], pd: ['ГП', 'АР', 'КР', 'ОВ', 'ВК', 'ЭОМ', 'СС', 'АПТ', 'ТХ', 'НС', 'ЛФТ', 'ПОС'], id: ['АОСР', 'АООК', 'ИС', 'ПИ', 'АПР', 'ОТЧ'], reports: ['МЕС', 'ОТЧ'], permits: ['РАЗ', 'ТУ', 'ОРД'] }[cat] || [];
     const used = M.documents.filter(d => d.cat === cat).map(d => d.section);
-    return [...new Set(used.concat(base))];
+    const cfg = (M.docSections || []).filter(x => x.cat === cat).map(x => x.code);
+    return [...new Set(cfg.concat(used).concat(cfg.length && !['id', 'reports', 'permits'].includes(cat) ? [] : base))].filter(x => x != null && x !== '');
   }
   function nextRevOf(d) {
     const last = d.versions.length ? d.versions[d.versions.length - 1].rev : null;
@@ -645,7 +659,7 @@
   U.INPUTS['up-cat'] = e => {
     const M = M0(); const sel = document.getElementById('up-sec'); if (!sel || !M) return;
     UI.upDraft.cat = e.target.value;
-    sel.innerHTML = secOptions(e.target.value, M).map(s => `<option value="${esc(s)}">${esc(s + ' — ' + (DSF.DOC_SECTIONS[s] || s))}</option>`).join('');
+    sel.innerHTML = secOptions(e.target.value, M).map(s => `<option value="${esc(s)}">${esc(s + ' — ' + (SECN(M)[s] || s))}</option>`).join('');
     const rev = document.getElementById('up-rev'); if (rev && !UI.upDraft.docId) rev.value = e.target.value === 'rd' ? '0' : '1';
   };
   U.FORMS.upload = function (f, r) {
@@ -705,17 +719,20 @@
       if (M.ksBy.get(r.sub)) return ksCard(M, M.ksBy.get(r.sub));
     }
     const P = M.P, f = M.fin;
-    const Y1 = Math.ceil(Math.max(f.approved, f.eac) / 1000) * 1000, step = Y1 / 4;
+    const setBtn = can('budget') ? `<button class="btn" type="button" data-go="${link(P.id, 'settings', 'budget')}">${ico('gear')}Статьи и договоры</button>` : '';
+    if (!M.items.length && !M.contracts.length) return { html: `${head(esc(P.name) + ' · финансы', 'Бюджет', 'проекта', 'Бюджет объекта ещё не сформирован.', setBtn)}
+      <section class="panel"><div class="pad"><div class="empty">Нет статей бюджета и договоров. Финансовые показатели не рассчитываются, пока данные не внесены.</div></div></section>` };
+    const Y1 = Math.max(1000, Math.ceil(Math.max(f.approved, f.eac) / 1000) * 1000), step = Y1 / 4;
     const open = (UI.biOpen = UI.biOpen || {});
     const pending = M.ks.filter(k => DSF.KS_STATUS[k.status].r < 7);
-    const html = `${head(esc(P.name) + ' · финансы', 'Бюджет', 'проекта', 'Статья бюджета → договоры → КС-2. «Заявлено подрядчиком» и «Принято Техническим заказчиком» — разные показатели; в выполнение включается только принятый и согласованный объём.')}
+    const html = `${head(esc(P.name) + ' · финансы', 'Бюджет', 'проекта', 'Статья бюджета → договоры → КС-2. «Заявлено подрядчиком» и «Принято Техническим заказчиком» — разные показатели; в выполнение включается только принятый и согласованный объём.' + (f.entered ? ' Финансы объекта — только по внесённым данным: КС-2 и оплаты вносятся в карточке договора.' : ''), setBtn)}
       <section class="tiles">
-        ${tile('Утверждённый бюджет', bn(f.approved) + ' <small>млрд ₽</small>', 'включая резерв ' + money(f.reserve))}
-        ${tile('Законтрактовано', bn(f.contracted) + ' <small>млрд ₽</small>', pct(f.contracted / f.approved * 100) + ' · ' + M.contracts.length + ' ' + plural(M.contracts.length, 'договор', 'договора', 'договоров'))}
+        ${tile('Утверждённый бюджет', f.configured ? bn(f.approved) + ' <small>млрд ₽</small>' : '—', f.configured ? 'включая резерв ' + money(f.reserve) : 'статьи без сумм')}
+        ${tile('Законтрактовано', bn(f.contracted) + ' <small>млрд ₽</small>', (f.configured ? pct(f.contracted / f.approved * 100) + ' · ' : '') + M.contracts.length + ' ' + plural(M.contracts.length, 'договор', 'договора', 'договоров'))}
         ${tile('Заявлено подрядчиками', bn(f.claimed) + ' <small>млрд ₽</small>', 'в т. ч. на проверке ' + money(sum(pending, k => k.claimed)))}
         ${tile('Принято ТЗ', bn(f.accepted) + ' <small>млрд ₽</small>', 'КС-2 согласовано ' + money(f.agreed), 'good')}
         ${tile('Оплачено', bn(f.paid) + ' <small>млрд ₽</small>', 'с учётом авансов и удержаний')}
-        ${tile('Прогноз стоимости', bn(f.eac) + ' <small>млрд ₽</small>', f.eac > f.approved ? 'перерасход ' + money(f.eacDelta) : 'резерв: остаток ' + money(Math.min(f.reserve, f.reserveLeft)), f.state)}
+        ${tile('Прогноз стоимости', bn(f.eac) + ' <small>млрд ₽</small>', !f.configured ? 'бюджет не задан' : f.eac > f.approved ? 'перерасход ' + money(f.eacDelta) : 'резерв: остаток ' + money(Math.min(f.reserve, f.reserveLeft)), f.state)}
       </section>
       <section class="panel">
         <header><h2>Статьи бюджета</h2><span class="sub">нажмите статью, чтобы увидеть договоры · млн ₽</span></header>
@@ -732,7 +749,7 @@
       </section>
       <section class="panel"><header><h2>КС-2 в работе</h2><span class="sub">заявки подрядчиков до согласования</span><span class="grow"></span><button class="lnk" type="button" data-go="${link(P.id, 'docs', 'ks')}">Все КС-2 ${ico('chev')}</button></header>
         <div class="pad"><div class="list">${pending.map(k => `<button class="li btnrow" type="button" data-go="${link(P.id, 'budget', k.id)}"><span class="t">${esc(k.contract.no)} · ${esc(k.no)} — ${esc(k.contract.contractor)}</span>${chip(ksSt(k).t, ksSt(k).c)}<span class="m">${esc(mon(k.period))} · заявлено ${money(k.claimed)}${k.accepted != null ? ' · принято ' + money(k.accepted) : ''} · этап ${ksSt(k).stage} из 2</span></button>`).join('') || empty('Заявок на проверке нет.')}</div></div></section>
-      <div class="grid2">
+      ${M.money.length && f.configured ? `<div class="grid2">
         <section class="panel"><header><h2>Освоение бюджета</h2><span class="sub">нарастающим итогом, млрд ₽</span></header>
           <div class="pad">${H.lineChart({ w: H.CW(), h: H.CH(), x0: M.money[0].t - 20, x1: M.money[M.money.length - 1].t, y0: 0, y1: Y1, yTicks: [0, step, step * 2, step * 3, Y1], yFmt: v => num(v / 1000, 1), label: 'Освоение бюджета', tipFmt: v => money(v),
             series: [
@@ -741,7 +758,7 @@
               { name: 'Выполнение по графику', color: 'var(--good)', pts: M.money.filter(c => c.fact != null).map(c => [c.t, c.fact]).concat([[M.T, f.done]]), area: true, end: true, width: 2.75 }
             ], marks: [{ t: M.T, label: 'сегодня', color: 'var(--accent)' }] })}</div></section>
         <section class="panel"><header><h2>Структура</h2><span class="sub">утверждённый бюджет</span></header><div class="pad">${H.budgetStack(M)}</div></section>
-      </div>`;
+      </div>` : ''}`;
     return { html };
   };
   function stageBars(c) {
@@ -754,8 +771,8 @@
     const idDocs = M.documents.filter(d => d.cat === 'id' && d.taskIds.some(id => c.tasks.some(t => t.id === id)));
     const canNew = c.tasks.length && c.unacted > 0.5 && !c.ks.some(k => DSF.KS_STATUS[k.status].r < 5 && k.status !== 'rejected');
     const html = `<div class="topback">${backBtn(link(P.id, 'budget'), 'Бюджет')}</div>
-      <section class="panel"><header><div style="min-width:0; flex:1"><div class="eyebrow">Договор · статья «${esc(it ? it.name : c.item)}»</div><h2 style="margin-top:6px">${esc(c.no)} от ${fd(c.d)} — ${esc(c.subject)}</h2><div class="muted" style="font-size:13px; margin-top:4px">${esc(c.contractor)} · аванс ${Math.round(c.adv * 100)}% · гарантийное удержание ${Math.round(c.ret * 100)}%</div></div>
-        ${canNew ? `<button class="btn primary" type="button" data-x="ks-new" data-cid="${c.id}">${ico('plus')}КС-2 от подрядчика</button>` : ''}</header>
+      <section class="panel"><header style="flex-wrap:wrap"><div style="min-width:0; flex:1 1 320px"><div class="eyebrow">Договор · статья «${esc(it ? it.name : c.item || '—')}»</div><h2 style="margin-top:6px">${esc(c.no)} от ${fd(c.d)} — ${esc(c.subject)}</h2><div class="muted" style="font-size:13px; margin-top:4px">${esc(c.contractor)} · аванс ${Math.round(c.adv * 100)}% · гарантийное удержание ${Math.round(c.ret * 100)}%</div></div>
+        <div class="hd-r">${canNew ? `<button class="btn primary" type="button" data-x="ks-new" data-cid="${c.id}">${ico('plus')}КС-2 от подрядчика</button>` : ''}<button class="btn" type="button" data-x="ct-edit" data-cid="${c.id}">${ico('edit')}Договор</button><button class="btn" type="button" data-x="ct-supp" data-cid="${c.id}">${ico('plus')}Доп. соглашение</button>${M.fin.entered ? `<button class="btn" type="button" data-x="ct-act" data-cid="${c.id}">${ico('plus')}Внести КС-2</button><button class="btn" type="button" data-x="ct-pay" data-cid="${c.id}">${ico('plus')}Оплата</button>` : ''}</div></header>
         <div class="pad">
           <div class="tiles" style="margin-bottom:14px">
             ${tile('Сумма договора', mln(c.amount) + ' <small>млн ₽</small>')}
@@ -765,8 +782,12 @@
             ${tile('Оплачено', mln(c.paid) + ' <small>млн ₽</small>', 'в т. ч. непогашенный аванс ' + mln(c.advance * (1 - c.paidActs / c.amount)))}
             ${tile('Остаток', mln(c.left) + ' <small>млн ₽</small>', 'не предъявлено ' + mln(c.unacted))}
           </div>
-          ${stageBars(c)}
-          <div class="note" style="margin-top:12px">Выполнение по графику (${mln(c.done)} млн ₽) — объективная оценка по проценту выполнения работ. В КС-2 попадает только принятый объём; непринятое возвращается в «не предъявлено».</div>
+          ${c.amount ? stageBars(c) : ''}
+          ${c.supp.length ? `<div class="eyebrow" style="margin:16px 0 6px">Цена договора: ${mln(c.base)} млн ₽ по договору${c.supp.map(a => ' ' + (a.amount >= 0 ? '+' : '−') + ' ' + mln(Math.abs(a.amount))).join('')} = ${mln(c.amount)} млн ₽</div>
+            <div class="tbl-wrap"><table class="t"><thead><tr><th class="l">Доп. соглашение</th><th>Дата</th><th class="l">Предмет</th><th>Сумма, млн ₽</th></tr></thead><tbody>${c.supp.map(a => `<tr><td class="l"><b>${esc(a.no || '—')}</b></td><td>${fd(a.d)}</td><td class="l w">${esc(a.subject || '')}</td><td>${a.amount >= 0 ? '+' : '−'}${mln(Math.abs(a.amount))}</td></tr>`).join('')}</tbody></table></div>` : ''}
+          ${(c.payments || []).length ? `<div class="eyebrow" style="margin:16px 0 6px">Оплаты · всего ${mln(sum(c.payments, p => p.amount))} млн ₽</div>
+            <div class="tbl-wrap"><table class="t"><thead><tr><th>Дата</th><th class="l">Назначение</th><th class="l">Основание</th><th>Сумма, млн ₽</th></tr></thead><tbody>${c.payments.map(pm => `<tr><td>${fd(pm.d)}</td><td class="l">${esc({ advance: 'Аванс', act: 'Оплата выполненных работ', other: 'Прочее' }[pm.kind] || pm.kind || '')}</td><td class="l w">${esc(pm.doc || '')}</td><td>${mln(pm.amount)}</td></tr>`).join('')}</tbody></table></div>` : ''}
+          <div class="note" style="margin-top:12px">${M.fin.entered ? 'Финансы договора — по внесённым данным: КС-2, оплаты и доп. соглашения. Выполнение по графику (' + mln(c.done) + ' млн ₽) рассчитывается из фактического прогресса работ договора.' : 'Выполнение по графику (' + mln(c.done) + ' млн ₽) — объективная оценка по проценту выполнения работ. В КС-2 попадает только принятый объём; непринятое возвращается в «не предъявлено».'}</div>
         </div></section>
       <section class="panel"><header><h2>История КС-2</h2><span class="sub">${c.ks.length} · млн ₽</span></header>
         <div class="pad tbl-wrap"><table class="t"><thead><tr><th>КС-2</th><th>Период</th><th>Дата</th><th>Заявлено</th><th>Принято</th><th>Сумма КС-2</th><th>Статус</th></tr></thead>
@@ -939,7 +960,8 @@
     store.update(r.pid, s => s.ksOps.push({ ks: d.ks, to: d.to, date: today(), by: d.to === 'sent' || d.to === 'formed' ? k.contract.contractor : ROLE.tz, text: texts[d.to] }));
     keepPage(); toast(esc(texts[d.to] || 'Статус обновлён') + '.');
   };
+  U.PERM_X['store-reset'] = 'admin';
   A['store-reset'] = (el, d) => { const pid = (d && d.pid) || route().pid; store.reset(pid); UI.modal = null; U.render(); toast('Демо-изменения проекта сброшены, данные восстановлены из датасета.'); };
 
-  DSF.ui.boot();
+  /* запуск — в admin.js после регистрации административных экранов */
 })();

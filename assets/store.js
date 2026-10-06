@@ -9,7 +9,7 @@
  * Адаптер хранения подменяемый:
  *   DemoAdapter  — localStorage браузера (демо-режим, без сервера);
  *   для промышленной версии достаточно реализовать load/save к API backend.
- * Сами файлы в демо-режиме живут только в памяти вкладки (blob-ссылки).
+ * Файлы в демо-режиме сохраняются в IndexedDB браузера (DSF.files), при её недоступности — только в памяти вкладки.
  */
 (function (root) {
   'use strict';
@@ -18,7 +18,7 @@
   const DemoAdapter = {
     name: 'demo-local',
     load(key) { try { const v = root.localStorage && root.localStorage.getItem(key); return v ? JSON.parse(v) : null; } catch (e) { return null; } },
-    save(key, val) { try { root.localStorage && root.localStorage.setItem(key, JSON.stringify(val)); return true; } catch (e) { return false; } },
+    save(key, val) { try { if (!root.localStorage) return false; root.localStorage.setItem(key, JSON.stringify(val)); return true; } catch (e) { if (DSF.onStorageError) DSF.onStorageError('Не удалось сохранить изменения: хранилище браузера недоступно или заполнено.'); return false; } },
     remove(key) { try { root.localStorage && root.localStorage.removeItem(key); } catch (e) { /* нет доступа */ } }
   };
 
@@ -53,14 +53,16 @@
     },
     count(pid) { const s = store.get(pid); return s.events.length + s.eventOps.length + s.docs.length + s.docOps.length + s.orders.length + s.orderOps.length + s.ks.length + s.ksOps.length + s.letters.length; },
     onChange(fn) { listeners.push(fn); },
+    /* файлы — через общее хранилище файлов (IndexedDB в демо), см. config.js */
     putFile(file) {
+      if (DSF.files) return DSF.files.put(file);
       const id = 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
       let url = null;
       try { url = root.URL && root.URL.createObjectURL ? root.URL.createObjectURL(file) : null; } catch (e) { url = null; }
       files.set(id, { url, name: file.name, size: file.size, type: file.type });
       return { id, name: file.name, size: file.size, type: file.type };
     },
-    file(id) { return files.get(id) || null; }
+    file(id) { return (DSF.files && DSF.files.get(id)) || files.get(id) || null; }
   };
   DSF.store = store;
 })(typeof window !== 'undefined' ? window : globalThis);
