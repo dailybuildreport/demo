@@ -1,6 +1,6 @@
 /*
  * Генератор вымышленного производственного контура демо-объектов (data/flow/<id>.js).
- * Запуск: node tools/gen-flow.js
+ * Запуск: node tools/gen-flow.js && node tools/export-demo-data.js
  *
  * Строит для каждого объекта ежедневные отчёты подрядчиков, ИД по работам, замечания
  * стройконтроля и гарантийные письма так, чтобы итоговая готовность совпадала с исходным
@@ -9,9 +9,9 @@
 const fs = require('fs'), vm = require('vm'), path = require('path');
 const root = path.join(__dirname, '..');
 global.window = global;
-['engine', 'engine-records', 'engine-flow', 'config'].forEach(f => vm.runInThisContext(fs.readFileSync(path.join(root, 'assets', f + '.js'), 'utf8')));
-const ids = JSON.parse(/DSF\.manifest\s*=\s*(\[[^\]]*\])/.exec(fs.readFileSync(path.join(root, 'data/manifest.js'), 'utf8'))[1].replace(/'/g, '"'));
-ids.forEach(id => vm.runInThisContext(fs.readFileSync(path.join(root, 'data/projects', id + '.js'), 'utf8')));
+['cpm', 'engine', 'engine-records', 'engine-flow', 'engine-changes', 'config'].forEach(f => vm.runInThisContext(fs.readFileSync(path.join(root, 'public/flow', f + '.js'), 'utf8')));
+const ids = require(path.join(root, 'api/demo_data/manifest.json')).projects;
+ids.forEach(id => vm.runInThisContext(fs.readFileSync(path.join(root, 'api/demo_data/src/projects', id + '.js'), 'utf8')));
 const { dn, iso } = DSF.util;
 
 function rng(seed) { let a = seed >>> 0; return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
@@ -202,6 +202,6 @@ for (const P of DSF.projects) {
   const js = '/* ' + P.name + ' — производственный контур демо: ежедневные отчёты, ИД, замечания стройконтроля, гарантийные письма.\n * Все данные вымышлены. Сформировано tools/gen-flow.js; корректируется в администрировании объекта. */\n' +
     'DSF.augment(' + JSON.stringify(P.id) + ', ' + JSON.stringify(out, null, 1).replace(/\n\s+(?=[\]\d"-])/g, ' ').replace(/\[\s+/g, '[') + ');\n';
   fs.mkdirSync(path.join(root, 'data/flow'), { recursive: true });
-  fs.writeFileSync(path.join(root, 'data/flow', P.id + '.js'), js);
+  fs.writeFileSync(path.join(root, 'api/demo_data/src/flow', P.id + '.js'), js);
   console.log(P.id, 'reports', out.reports.length, 'docs', out.documents.length, 'remarks', out.remarks.length, 'letters', out.letters.length, 'active', active.map(t => t.id).join(','));
 }
